@@ -411,15 +411,44 @@
     }
 
     if (type === "click") {
-      // Priorité : boutons, liens, éléments cliquables.
-      document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a[href], [onclick]").forEach((el) => {
+      // Priorité : boutons, liens, éléments cliquables standards.
+      const clickable = document.querySelectorAll(
+        "button, [role='button'], input[type='submit'], input[type='button'], a[href], [onclick]"
+      );
+      clickable.forEach((el) => {
         const txt = (el.textContent || "").trim().slice(0, 30);
+        if (!txt) return;
         if (el.id) add("#" + el.id, `#${el.id} "${txt}"`);
         el.classList.forEach((c) => add("." + c, `.${c} "${txt}"`));
-        // Si pas d'id ni class, on suggère par tag + texte.
         if (!el.id && el.classList.length === 0) {
           add(el.tagName.toLowerCase(), `${el.tagName.toLowerCase()} "${txt}"`);
         }
+      });
+
+      // Détection large : tout élément avec cursor: pointer (menus, spans, etc.)
+      // On scanne les éléments textuels courts qui sont cliquables visuellement.
+      const all = document.querySelectorAll("span, div, li, a, p, h1, h2, h3, h4, td, th");
+      all.forEach((el) => {
+        // Déjà capté par la passe ci-dessus ?
+        if (el.id && seen.has("#" + el.id)) return;
+        let hasClass = false;
+        el.classList.forEach((c) => { if (seen.has("." + c)) hasClass = true; });
+        if (hasClass) return;
+
+        const txt = (el.textContent || "").trim();
+        if (!txt || txt.length > 40) return;
+        // On ne veut que les feuilles (pas les parents qui contiennent d'autres éléments cliquables).
+        if (el.querySelector("button, a[href], [role='button']")) return;
+
+        try {
+          const style = window.getComputedStyle(el);
+          if (style.cursor !== "pointer") return;
+        } catch { return; }
+
+        const short = txt.slice(0, 30);
+        if (el.id) add("#" + el.id, `#${el.id} "${short}"`);
+        else if (el.classList.length > 0) add("." + el.classList[0], `.${el.classList[0]} "${short}"`);
+        else add(el.tagName.toLowerCase() + `:nth-child(${Array.from(el.parentNode.children).indexOf(el) + 1})`, `${el.tagName.toLowerCase()} "${short}"`);
       });
     } else if (type === "fill") {
       // Priorité : inputs, textareas, selects.
