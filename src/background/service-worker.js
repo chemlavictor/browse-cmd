@@ -11,11 +11,15 @@
 chrome.commands.onCommand.addListener((command) => {
   if (command !== "toggle-shell") return;
 
-  // Récupère l'onglet actif de l'onglet actuel, puis lui envoie "toggle".
+  // Récupère l'onglet actif de la fenêtre courante, puis lui envoie "toggle".
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs || tabs.length === 0) return;
-    chrome.tabs.sendMessage(tabs[0].id, { type: "toggle" }).catch(() => {
-      // L'onglet n'a pas de content script (chrome:// pages, etc.) — silencieux.
+    // sendMessage en MV3 est callback-based (pas Promise).
+    // Le callback reçoit une erreur si l'onglet n'a pas de content script.
+    chrome.tabs.sendMessage(tabs[0].id, { type: "toggle" }, () => {
+      // chrome.runtime.lastError peut être set si l'onglet n'a pas
+      // de content script (chrome:// pages, Web Store, etc.) — silencieux.
+      void chrome.runtime.lastError;
     });
   });
 });
