@@ -525,6 +525,9 @@
         e.preventDefault();
         completeTo(s.value);
       });
+      item.addEventListener("mouseenter", () => {
+        liveMarkTarget(s.value);
+      });
       suggestEl.appendChild(item);
       // S'assure que l'élément actif est visible dans le menu.
       if (i === suggestIndex) {
