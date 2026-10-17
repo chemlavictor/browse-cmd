@@ -8,10 +8,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "scripting", "sidePanel"],
-  "side_panel": {
-    "default_path": "sidepanel/sidepanel.html"
-  },
+  "permissions": ["activeTab", "scripting"],
   "commands": {
     "toggle-shell": {
       "suggested_key": {
@@ -29,6 +26,7 @@
       "js": [
         "content/state.js",
         "content/commands.js",
+        "content/ui.js",
         "content/content-script.js"
       ],
       "run_at": "document_idle"
