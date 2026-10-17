@@ -21,17 +21,23 @@
 (function () {
   "use strict";
 
-  const HELP_TEXT = [
-    "Commandes disponibles :",
+  const WELCOME_TEXT = [
+    "browse-cmd — shell navigateur",
+    "─────────────────────────────────────",
     "  help                    Liste les commandes",
     "  clear                   Efface le shell",
+    "  quit / q                Ferme le shell",
     "  url                     Affiche l'URL courante",
     "  tab <url>               Ouvre l'URL dans un nouvel onglet",
-    "  get <sel> [inner|outer] Renvoie le HTML d'un élément (outer par défaut)",
+    "  get <sel> [inner|outer] HTML d'un élément",
     "  click <sel>             Clique sur un élément",
-    "  copy <sel>              Copie le texte d'un élément dans le presse-papiers",
+    "  copy <sel>              Copie le texte d'un élément",
     "  eval <js>               Exécute du JS dans la page",
+    "─────────────────────────────────────",
+    "  Raccourcis : ↑/↓ historique · Esc quitte",
   ].join("\n");
+
+  const HELP_TEXT = WELCOME_TEXT;
 
   /**
    * Formate le résultat d'une commande `eval` (§3 SPEC, décision #6) :
@@ -69,6 +75,10 @@
         ctx.clearOutput();
         return undefined;
 
+      case "quit":
+      case "q":
+        ctx.close();
+        return "Au revoir !";
       case "url":
         return window.location.href;
 
@@ -176,7 +186,7 @@
   }
 
   // Enregistre exec dans la namespace BrowseCmd (state.js l'a créée).
-  window.BrowseCmd.exec = (cmd) => exec(cmd, { clearOutput: clearOutput });
+  window.BrowseCmd.exec = (cmd) => exec(cmd, { clearOutput: clearOutput, close: closeShell });
 
   /**
    * Efface la zone de sortie du shell.
@@ -186,6 +196,16 @@
   function clearOutput() {
     if (typeof window.__browseCmdClear === "function") {
       window.__browseCmdClear();
+    }
+  }
+
+  /**
+   * Ferme le shell (commande quit/q).
+   * Utilise le callback global __browseCmdOnClose branché par ui.js.
+   */
+  function closeShell() {
+    if (typeof window.BrowseCmd.closePanel === "function") {
+      window.BrowseCmd.closePanel();
     }
   }
 })();

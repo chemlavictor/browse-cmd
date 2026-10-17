@@ -28,8 +28,11 @@
   let overlayEl = null;
   let outputEl = null;
   let inputEl = null;
+  let suggestEl = null;
   let inputIndex = -1;
   let draft = "";
+  let suggestions = [];
+  let suggestIndex = -1;
 
   /**
    * Construit le DOM du shell dans une shadow root.
@@ -76,6 +79,11 @@
     inputEl.spellcheck = false;
     inputRow.appendChild(inputEl);
 
+    // Menu d'autocomplétion (au-dessus de la ligne de saisie).
+    suggestEl = document.createElement("div");
+    suggestEl.className = "bc-suggest";
+    panel.appendChild(suggestEl);
+
     panel.appendChild(inputRow);
     shadow.appendChild(panel);
 
@@ -83,6 +91,7 @@
 
     // Événements clavier sur l'input.
     inputEl.addEventListener("keydown", onKeydown);
+    inputEl.addEventListener("input", onInput);
     // Focus auto à l'ouverture.
     inputEl.addEventListener("focus", () => {
       /* no-op — le focus est géré par openPanel */
@@ -92,28 +101,123 @@
   /**
    * Gère les touches sur la ligne de saisie.
    * - Enter : exécute la commande.
-   * - ↑ / ↓ : navigue dans l'historique.
+   * - Tab : complète la commande.
+   * - ↑ / ↓ : navigue dans l'historique (ou les suggestions).
    * - Esc : ferme le shell.
    * @param {KeyboardEvent} e
    */
   function onKeydown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
+      hideSuggest();
       const cmd = inputEl.value;
       inputEl.value = "";
       draft = "";
       inputIndex = -1;
       window.BrowseCmd.runCommand(cmd);
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      acceptSuggestion();
     } else if (e.key === "Escape") {
       e.preventDefault();
+      hideSuggest();
       window.BrowseCmd.toggle();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      navigateHistory(-1);
+      if (suggestions.length > 0 && suggestIndex >= 0) {
+        // Navigation dans les suggestions.
+        if (suggestIndex > 0) suggestIndex--;
+        renderSuggest();
+      } else {
+        navigateHistory(-1);
+      }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      navigateHistory(1);
+      if (suggestions.length > 0 && suggestIndex >= 0) {
+        // Navigation dans les suggestions.
+        if (suggestIndex < suggestions.length - 1) suggestIndex++;
+        renderSuggest();
+      } else {
+        navigateHistory(1);
+      }
     }
+  }
+
+  /**
+   * Liste des commandes pour l'autocomplétion.
+   */
+  const COMMANDS = ["help", "clear", "quit", "q", "url", "tab", "get", "click", "copy", "eval"];
+
+  /**
+   * Déclenché à chaque frappe : calcule les suggestions.
+   */
+  function onInput() {
+    const val = inputEl.value;
+    // On autocomplete seulement si la ligne ne contient pas d'espace
+    // (donc qu'un seul token en cours de saisie).
+    if (val.includes(" ")) {
+      hideSuggest();
+      return;
+    }
+    const lower = val.toLowerCase();
+    if (lower.length === 0) {
+      hideSuggest();
+      return;
+    }
+    suggestions = COMMANDS.filter((c) => c.startsWith(lower) && c !== lower);
+    suggestIndex = suggestions.length > 0 ? 0 : -1;
+    if (suggestions.length === 0) {
+      hideSuggest();
+    } else {
+      renderSuggest();
+    }
+  }
+
+  /**
+   * Rend le menu de suggestions.
+   */
+  function renderSuggest() {
+    if (!suggestEl) return;
+    suggestEl.innerHTML = "";
+    suggestions.forEach((s, i) => {
+      const item = document.createElement("div");
+      item.className = "bc-suggest-item" + (i === suggestIndex ? " bc-suggest-active" : "");
+      item.textContent = s;
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        completeTo(s);
+      });
+      suggestEl.appendChild(item);
+    });
+    suggestEl.style.display = "block";
+  }
+
+  /**
+   * Cache le menu de suggestions.
+   */
+  function hideSuggest() {
+    suggestions = [];
+    suggestIndex = -1;
+    if (suggestEl) suggestEl.style.display = "none";
+  }
+
+  /**
+   * Accepte la suggestion active (ou la seule suggestion).
+   */
+  function acceptSuggestion() {
+    if (suggestions.length === 0) return;
+    const s = suggestions[suggestIndex >= 0 ? suggestIndex : 0];
+    completeTo(s);
+  }
+
+  /**
+   * Remplit l'input avec la suggestion + un espace.
+   * @param {string} s
+   */
+  function completeTo(s) {
+    inputEl.value = s + " ";
+    hideSuggest();
+    inputEl.focus();
   }
 
   /**
@@ -180,12 +284,37 @@
   /**
    * Rend le panneau visible et focus l'input.
    */
+  let welcomed = false;
+
   function openPanel() {
     if (!overlayEl) build();
     overlayEl.style.display = "flex";
     if (inputEl) {
       inputEl.focus();
       inputEl.select();
+    }
+    // Affiche le message de bienvenue à la première ouverture.
+    if (!welcomed && outputEl) {
+      welcomed = true;
+      const line = document.createElement("div");
+      line.className = "bc-line bc-out";
+      line.style.whiteSpace = "pre-wrap";
+      line.textContent = [
+        "browse-cmd — shell navigateur",
+        "─────────────────────────────────────",
+        "  help                    Liste les commandes",
+        "  clear                   Efface le shell",
+        "  quit / q                Ferme le shell",
+        "  url                     Affiche l'URL courante",
+        "  tab <url>               Ouvre l'URL dans un nouvel onglet",
+        "  get <sel> [inner|outer] HTML d'un élément",
+        "  click <sel>             Clique sur un élément",
+        "  copy <sel>              Copie le texte d'un élément",
+        "  eval <js>               Exécute du JS dans la page",
+        "─────────────────────────────────────",
+        "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
+      ].join("\n");
+      outputEl.appendChild(line);
     }
   }
 
@@ -281,6 +410,23 @@
       font-family: inherit;
       font-size: inherit;
       caret-color: #a6e3a1;
+    }
+    .bc-suggest {
+      display: none;
+      border-top: 1px solid #45475a;
+      background: #181825;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .bc-suggest-item {
+      padding: 4px 16px;
+      cursor: pointer;
+      color: #a6adc8;
+    }
+    .bc-suggest-item:hover,
+    .bc-suggest-active {
+      background: #313244;
+      color: #cdd6f4;
     }
   `;
 })();
