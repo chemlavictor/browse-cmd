@@ -24,20 +24,35 @@
   const WELCOME_TEXT = [
     "browse-cmd — shell navigateur",
     "─────────────────────────────────────",
-    "  help                    Liste les commandes",
-    "  clear                   Efface le shell",
-    "  quit / q                Ferme le shell",
-    "  url                     Affiche l'URL courante",
-    "  tab <url>               Ouvre l'URL dans un nouvel onglet",
-    "  get <sel> [inner|outer] HTML d'un élément",
-    "  click <sel>             Clique sur un élément",
-    "  copy <sel>              Copie le texte d'un élément",
-    "  eval <js>               Exécute du JS dans la page",
+    "  h / help              Liste les commandes",
+    "  c / clear             Efface le shell",
+    "  q / quit              Ferme le shell",
+    "  u / url               Affiche l'URL courante",
+    "  t <url> / tab         Ouvre l'URL dans un nouvel onglet",
+    "  g <sel> [i] / get     HTML d'un élément (i = inner)",
+    "  k <sel> / click       Clique sur un élément",
+    "  y <sel> / copy        Copie le texte d'un élément",
+    "  e <js> / eval         Exécute du JS dans la page",
     "─────────────────────────────────────",
-    "  Raccourcis : ↑/↓ historique · Esc quitte",
+    "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
   ].join("\n");
 
   const HELP_TEXT = WELCOME_TEXT;
+
+  /**
+   * Aliases courts → commandes complètes.
+   */
+  const ALIASES = {
+    h: "help",
+    c: "clear",
+    q: "quit",
+    u: "url",
+    t: "tab",
+    g: "get",
+    k: "click",
+    y: "copy",
+    e: "eval",
+  };
 
   /**
    * Formate le résultat d'une commande `eval` (§3 SPEC, décision #6) :
@@ -90,13 +105,20 @@
       }
 
       case "get": {
-        if (args.length === 0) return "Usage: get <sélecteur> [inner|outer]";
-        const mode = args[args.length - 1];
-        const isInner = mode === "inner" || mode === "outer";
-        const selector = isInner ? args.slice(0, -1).join(" ") : args.join(" ");
+        if (args.length === 0) return "Usage: get <sélecteur> [i|o]";
+        let mode = "o"; // outer par défaut
+        const last = args[args.length - 1];
+        if (last === "i" || last === "inner") {
+          mode = "i";
+          args.pop();
+        } else if (last === "o" || last === "outer") {
+          mode = "o";
+          args.pop();
+        }
+        const selector = args.join(" ");
         const el = document.querySelector(selector);
         if (!el) return `not found: ${selector}`;
-        return isInner ? el.innerHTML : el.outerHTML;
+        return mode === "i" ? el.innerHTML : el.outerHTML;
       }
 
       case "click": {
@@ -144,7 +166,9 @@
   function exec(raw, ctx) {
     const parts = tokenize(raw);
     if (parts.length === 0) return undefined;
-    const name = parts[0].toLowerCase();
+    let name = parts[0].toLowerCase();
+    // Résout l'alias court vers la commande complète.
+    if (ALIASES[name]) name = ALIASES[name];
     const args = parts.slice(1);
     return dispatch(name, args, ctx);
   }

@@ -285,29 +285,88 @@
   /**
    * Liste des commandes pour l'autocomplétion.
    */
-  const COMMANDS = ["help", "clear", "quit", "q", "url", "tab", "get", "click", "copy", "eval"];
+  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "y", "copy", "e", "eval"];
+
+  /**
+   * Commandes qui prennent un sélecteur en argument.
+   */
+  const SELECTOR_CMDS = { g: "get", k: "click", y: "copy", get: "get", click: "click", copy: "copy" };
+
+  /**
+   * Scanne le DOM pour collecter des sélecteurs utiles.
+   * Renvoie un tableau de sélecteurs (ids, classes, tags).
+   * @returns {string[]}
+   */
+  function collectSelectors() {
+    const selectors = new Set();
+    // IDs (les plus courts et les plus utiles).
+    document.querySelectorAll("[id]").forEach((el) => {
+      selectors.add("#" + el.id);
+    });
+    // Classes (max 30 pour ne pas polluer).
+    const classCount = {};
+    document.querySelectorAll("[class]").forEach((el) => {
+      for (const cls of el.classList) {
+        classCount[cls] = (classCount[cls] || 0) + 1;
+      }
+    });
+    // On ne garde que les classes fréquentes (apparues 1+ fois) et courtes.
+    Object.keys(classCount)
+      .filter((c) => c.length <= 30)
+      .slice(0, 30)
+      .forEach((c) => selectors.add("." + c));
+    // Tags communs.
+    ["input", "button", "a", "form", "select", "textarea", "img", "div", "span", "h1", "h2", "h3", "p"].forEach((t) => {
+      if (document.querySelector(t)) selectors.add(t);
+    });
+    return [...selectors];
+  }
 
   /**
    * Déclenché à chaque frappe : calcule les suggestions.
+   * - Pas d'espace : autocomplete des noms de commandes.
+   * - Avec espace et commande sélecteur (g, k, y) : autocomplete des sélecteurs DOM.
    */
   function onInput() {
     const val = inputEl.value;
-    if (val.includes(" ")) {
-      hideSuggest();
+    const spaceIdx = val.indexOf(" ");
+
+    if (spaceIdx === -1) {
+      // Pas d'espace : autocomplete des commandes.
+      const lower = val.toLowerCase();
+      if (lower.length === 0) {
+        hideSuggest();
+        return;
+      }
+      suggestions = COMMANDS.filter((c) => c.startsWith(lower) && c !== lower);
+      suggestIndex = suggestions.length > 0 ? 0 : -1;
+      if (suggestions.length === 0) {
+        hideSuggest();
+      } else {
+        renderSuggest();
+      }
       return;
     }
-    const lower = val.toLowerCase();
-    if (lower.length === 0) {
-      hideSuggest();
+
+    // Avec espace : vérifie si c'est une commande sélecteur.
+    const cmdPart = val.slice(0, spaceIdx).toLowerCase();
+    const typePart = val.slice(spaceIdx + 1).toLowerCase();
+
+    if (SELECTOR_CMDS[cmdPart] && typePart.length > 0) {
+      // Autocomplétion des sélecteurs DOM.
+      const allSelectors = collectSelectors();
+      suggestions = allSelectors.filter((s) => s.startsWith(typePart) && s !== typePart);
+      suggestIndex = suggestions.length > 0 ? 0 : -1;
+      if (suggestions.length === 0) {
+        hideSuggest();
+      } else {
+        renderSuggest();
+      }
       return;
     }
-    suggestions = COMMANDS.filter((c) => c.startsWith(lower) && c !== lower);
-    suggestIndex = suggestions.length > 0 ? 0 : -1;
-    if (suggestions.length === 0) {
-      hideSuggest();
-    } else {
-      renderSuggest();
-    }
+
+    // Pas de contexte de sélecteur.
+    hideSuggest();
   }
 
   /**
