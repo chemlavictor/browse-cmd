@@ -360,49 +360,61 @@
 
   /**
    * Scanne le DOM pour collecter des sélecteurs selon le type de commande.
+   * Renvoie des objets { value, label } où value = sélecteur CSS,
+   * label = texte affiché dans les suggestions (ex: 'a "Learn more"').
    * @param {string} type - "all" | "click" | "fill"
-   * @returns {string[]}
+   * @returns {{value: string, label: string}[]}
    */
   function collectSelectors(type) {
     const selectors = [];
     const seen = new Set();
 
-    function add(sel) {
-      if (sel && !seen.has(sel)) {
-        seen.add(sel);
-        selectors.push(sel);
+    function add(value, label) {
+      if (value && !seen.has(value)) {
+        seen.add(value);
+        selectors.push({ value, label: label || value });
       }
     }
 
     if (type === "click") {
       // Priorité : boutons, liens, éléments cliquables.
       document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a[href], [onclick]").forEach((el) => {
-        if (el.id) add("#" + el.id);
-        el.classList.forEach((c) => add("." + c));
+        const txt = (el.textContent || "").trim().slice(0, 30);
+        if (el.id) add("#" + el.id, `#${el.id} "${txt}"`);
+        el.classList.forEach((c) => add("." + c, `.${c} "${txt}"`));
+        // Si pas d'id ni class, on suggère par tag + texte.
+        if (!el.id && el.classList.length === 0) {
+          add(el.tagName.toLowerCase(), `${el.tagName.toLowerCase()} "${txt}"`);
+        }
       });
-      // Tags en dernier recours.
-      if (document.querySelector("button")) add("button");
-      if (document.querySelector("a")) add("a");
     } else if (type === "fill") {
       // Priorité : inputs, textareas, selects.
       document.querySelectorAll("input, textarea, select").forEach((el) => {
-        if (el.id) add("#" + el.id);
-        if (el.name) add(`[name="${el.name}"]`);
-        el.classList.forEach((c) => add("." + c));
-        add(el.tagName.toLowerCase() + (el.type ? `[type="${el.type}"]` : ""));
+        const placeholder = el.placeholder || "";
+        const label = el.name || el.id || el.type || el.tagName.toLowerCase();
+        if (el.id) add("#" + el.id, `#${el.id} (${label})`);
+        if (el.name) add(`[name="${el.name}"]`, `[name="${el.name}"]`);
+        el.classList.forEach((c) => add("." + c, `.${c} (${el.tagName.toLowerCase()})`));
       });
-      if (document.querySelector("input")) add("input");
-      if (document.querySelector("textarea")) add("textarea");
+      if (document.querySelector("input")) add("input", "input");
+      if (document.querySelector("textarea")) add("textarea", "textarea");
     } else {
       // "all" : IDs, classes, tags.
-      document.querySelectorAll("[id]").forEach((el) => add("#" + el.id));
+      document.querySelectorAll("[id]").forEach((el) => {
+        const txt = (el.textContent || "").trim().slice(0, 20);
+        add("#" + el.id, txt ? `#${el.id} "${txt}"` : "#" + el.id);
+      });
       const classCount = {};
       document.querySelectorAll("[class]").forEach((el) => {
         el.classList.forEach((c) => { classCount[c] = (classCount[c] || 0) + 1; });
       });
-      Object.keys(classCount).filter((c) => c.length <= 30).slice(0, 30).forEach((c) => add("." + c));
+      Object.keys(classCount).filter((c) => c.length <= 30).slice(0, 30).forEach((c) => {
+        const el = document.querySelector("." + c);
+        const txt = el ? (el.textContent || "").trim().slice(0, 20) : "";
+        add("." + c, txt ? `.${c} "${txt}"` : "." + c);
+      });
       ["input", "button", "a", "form", "select", "textarea", "img", "div", "span", "h1", "h2", "h3", "p"].forEach((t) => {
-        if (document.querySelector(t)) add(t);
+        if (document.querySelector(t)) add(t, t);
       });
     }
 
@@ -425,7 +437,9 @@
         hideSuggest();
         return;
       }
-      suggestions = COMMANDS.filter((c) => c.startsWith(lower) && c !== lower);
+      suggestions = COMMANDS
+        .filter((c) => c.startsWith(lower) && c !== lower)
+        .map((c) => ({ value: c, label: c }));
       suggestIndex = suggestions.length > 0 ? 0 : -1;
       if (suggestions.length === 0) {
         hideSuggest();
@@ -441,11 +455,10 @@
 
     if (SELECTOR_CMDS[cmdPart]) {
       // Autocomplétion des sélecteurs DOM.
-      // Affiche les suggestions même si typePart est vide (après l'espace).
       const allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
       const filtered = typePart.length > 0
-        ? allSelectors.filter((s) => s.toLowerCase().startsWith(typePart) && s !== typePart)
-        : allSelectors.slice(0, 20); // max 20 si pas de filtre
+        ? allSelectors.filter((s) => s.value.toLowerCase().startsWith(typePart) || s.label.toLowerCase().startsWith(typePart))
+        : allSelectors.slice(0, 20);
       suggestions = filtered;
       suggestIndex = suggestions.length > 0 ? 0 : -1;
       if (suggestions.length === 0) {
@@ -469,10 +482,10 @@
     suggestions.forEach((s, i) => {
       const item = document.createElement("div");
       item.className = "bc-suggest-item" + (i === suggestIndex ? " bc-suggest-active" : "");
-      item.textContent = s;
+      item.textContent = s.label;
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
-        completeTo(s);
+        completeTo(s.value);
       });
       suggestEl.appendChild(item);
     });
@@ -494,7 +507,7 @@
   function acceptSuggestion() {
     if (suggestions.length === 0) return;
     const s = suggestions[suggestIndex >= 0 ? suggestIndex : 0];
-    completeTo(s);
+    completeTo(s.value);
   }
 
   /**
