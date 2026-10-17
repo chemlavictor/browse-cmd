@@ -208,6 +208,9 @@
   const CSS = `
     :host {
       all: initial;
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
     }
     .bc-overlay {
       position: fixed;
@@ -216,13 +219,14 @@
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 2147483647;
       font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, monospace;
       font-size: 14px;
     }
     .bc-panel {
       width: 80vw;
+      max-width: 900px;
       height: 60vh;
+      max-height: 600px;
       background: #1e1e2e;
       color: #cdd6f4;
       border-radius: 8px;
