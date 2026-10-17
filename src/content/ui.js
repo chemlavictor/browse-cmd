@@ -535,6 +535,29 @@
       }
     });
     suggestEl.style.display = "block";
+
+    // Quand on scroll la liste avec la molette, le marqueur rouge
+    // suit l'élément le plus proche du centre du menu.
+    if (!suggestEl._scrollHandler) {
+      suggestEl._scrollHandler = true;
+      suggestEl.addEventListener("scroll", () => {
+        const items = suggestEl.querySelectorAll(".bc-suggest-item");
+        if (items.length === 0) return;
+        const mid = suggestEl.scrollTop + suggestEl.clientHeight / 2;
+        let closest = null, closestDist = Infinity;
+        items.forEach((item) => {
+          const itemMid = item.offsetTop + item.offsetHeight / 2;
+          const dist = Math.abs(itemMid - mid);
+          if (dist < closestDist) { closestDist = dist; closest = item; }
+        });
+        if (closest) {
+          const idx = Array.from(items).indexOf(closest);
+          if (idx >= 0 && idx < suggestions.length) {
+            liveMarkTarget(suggestions[idx].value);
+          }
+        }
+      });
+    }
   }
   /**
    * Cache le menu de suggestions.
