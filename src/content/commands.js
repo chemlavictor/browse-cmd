@@ -31,6 +31,7 @@
     "  t <url> / tab         Ouvre l'URL dans un nouvel onglet",
     "  g <sel> [i] / get     HTML d'un élément (i = inner)",
     "  k <sel> / click       Clique sur un élément",
+    "  f <sel> <texte> / fill  Remplit un input/textarea",
     "  y <sel> / copy        Copie le texte d'un élément",
     "  e <js> / eval         Exécute du JS dans la page",
     "─────────────────────────────────────",
@@ -50,6 +51,7 @@
     t: "tab",
     g: "get",
     k: "click",
+    f: "fill",
     y: "copy",
     e: "eval",
   };
@@ -130,6 +132,20 @@
         return `click : ${selector}`;
       }
 
+      case "fill": {
+        if (args.length < 2) return "Usage: fill <sélecteur> <texte>";
+        const selector = args[0];
+        const text = args.slice(1).join(" ");
+        const el = document.querySelector(selector);
+        if (!el) return `not found: ${selector}`;
+        if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") {
+          return `pas un input/textarea : ${selector}`;
+        }
+        el.value = text;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return `fill : ${selector} = "${text}"`;
+      }
       case "copy": {
         if (args.length === 0) return "Usage: copy <sélecteur>";
         const selector = args.join(" ");

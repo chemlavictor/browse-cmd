@@ -285,41 +285,73 @@
   /**
    * Liste des commandes pour l'autocomplétion.
    */
-  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "y", "copy", "e", "eval"];
+  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval"];
 
   /**
-   * Commandes qui prennent un sélecteur en argument.
+   * Commandes qui prennent un sélecteur en argument, et leur priorité.
+   * click → boutons + liens
+   * fill  → inputs + textareas
+   * get/copy → tous
    */
-  const SELECTOR_CMDS = { g: "get", k: "click", y: "copy", get: "get", click: "click", copy: "copy" };
+  const SELECTOR_CMDS = {
+    g: "all", get: "all",
+    k: "click", click: "click",
+    f: "fill", fill: "fill",
+    y: "all", copy: "all",
+  };
 
   /**
-   * Scanne le DOM pour collecter des sélecteurs utiles.
-   * Renvoie un tableau de sélecteurs (ids, classes, tags).
+   * Scanne le DOM pour collecter des sélecteurs selon le type de commande.
+   * @param {string} type - "all" | "click" | "fill"
    * @returns {string[]}
    */
-  function collectSelectors() {
-    const selectors = new Set();
-    // IDs (les plus courts et les plus utiles).
-    document.querySelectorAll("[id]").forEach((el) => {
-      selectors.add("#" + el.id);
-    });
-    // Classes (max 30 pour ne pas polluer).
-    const classCount = {};
-    document.querySelectorAll("[class]").forEach((el) => {
-      for (const cls of el.classList) {
-        classCount[cls] = (classCount[cls] || 0) + 1;
+  function collectSelectors(type) {
+    const selectors = [];
+    const seen = new Set();
+
+    function add(sel) {
+      if (sel && !seen.has(sel)) {
+        seen.add(sel);
+        selectors.push(sel);
       }
-    });
-    // On ne garde que les classes fréquentes (apparues 1+ fois) et courtes.
-    Object.keys(classCount)
-      .filter((c) => c.length <= 30)
-      .slice(0, 30)
-      .forEach((c) => selectors.add("." + c));
-    // Tags communs.
-    ["input", "button", "a", "form", "select", "textarea", "img", "div", "span", "h1", "h2", "h3", "p"].forEach((t) => {
-      if (document.querySelector(t)) selectors.add(t);
-    });
-    return [...selectors];
+    }
+
+    if (type === "click") {
+      // Priorité : boutons, liens, éléments cliquables.
+      document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a[href], [onclick]").forEach((el) => {
+        if (el.id) add("#" + el.id);
+        // Sélecteur par texte (court).
+        const txt = (el.textContent || "").trim();
+        if (txt && txt.length <= 20) add(`text:"${txt}"`);
+        el.classList.forEach((c) => add("." + c));
+      });
+      // Tags button et a en dernier recours.
+      if (document.querySelector("button")) add("button");
+      if (document.querySelector("a")) add("a");
+    } else if (type === "fill") {
+      // Priorité : inputs, textareas, selects.
+      document.querySelectorAll("input, textarea, select").forEach((el) => {
+        if (el.id) add("#" + el.id);
+        if (el.name) add(`[name="${el.name}"]`);
+        el.classList.forEach((c) => add("." + c));
+        add(el.tagName.toLowerCase() + (el.type ? `[type="${el.type}"]` : ""));
+      });
+      if (document.querySelector("input")) add("input");
+      if (document.querySelector("textarea")) add("textarea");
+    } else {
+      // "all" : IDs, classes, tags.
+      document.querySelectorAll("[id]").forEach((el) => add("#" + el.id));
+      const classCount = {};
+      document.querySelectorAll("[class]").forEach((el) => {
+        el.classList.forEach((c) => { classCount[c] = (classCount[c] || 0) + 1; });
+      });
+      Object.keys(classCount).filter((c) => c.length <= 30).slice(0, 30).forEach((c) => add("." + c));
+      ["input", "button", "a", "form", "select", "textarea", "img", "div", "span", "h1", "h2", "h3", "p"].forEach((t) => {
+        if (document.querySelector(t)) add(t);
+      });
+    }
+
+    return selectors;
   }
 
   /**
@@ -354,8 +386,8 @@
 
     if (SELECTOR_CMDS[cmdPart] && typePart.length > 0) {
       // Autocomplétion des sélecteurs DOM.
-      const allSelectors = collectSelectors();
-      suggestions = allSelectors.filter((s) => s.startsWith(typePart) && s !== typePart);
+      const allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
+      suggestions = allSelectors.filter((s) => s.toLowerCase().startsWith(typePart) && s !== typePart);
       suggestIndex = suggestions.length > 0 ? 0 : -1;
       if (suggestions.length === 0) {
         hideSuggest();
