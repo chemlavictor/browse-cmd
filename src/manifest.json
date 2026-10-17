@@ -13,16 +13,16 @@
     }
   },
   "background": {
-    "service_worker": "src/background/service-worker.js"
+    "service_worker": "background/service-worker.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": [
-        "src/content/state.js",
-        "src/content/commands.js",
-        "src/content/ui.js",
-        "src/content/content-script.js"
+        "content/state.js",
+        "content/commands.js",
+        "content/ui.js",
+        "content/content-script.js"
       ],
       "run_at": "document_idle"
     }
