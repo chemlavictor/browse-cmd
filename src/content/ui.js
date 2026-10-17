@@ -200,8 +200,16 @@
   window.__browseCmdOnOpen = openPanel;
   window.__browseCmdOnClose = closePanel;
   window.__browseCmdOnOutput = appendOutput;
-  window.__browseCmdClear = clearOutput;
 
+  // Échap global : ferme le shell même si le focus n'est pas dans l'input.
+  // capture: true pour intercepter avant la page.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && window.BrowseCmd.panelOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.BrowseCmd.toggle();
+    }
+  }, true);
   /**
    * CSS du shell (scope shadow root — aucune fuite vers la page).
    */
