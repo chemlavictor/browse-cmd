@@ -674,7 +674,8 @@
     .bc-panel {
       display: none;
       flex-direction: column;
-      background: #1e1e2e;
+      background: rgba(30, 30, 46, 0.92);
+      backdrop-filter: blur(8px);
       color: #cdd6f4;
       border-radius: 8px;
       border: 1px solid #45475a;
