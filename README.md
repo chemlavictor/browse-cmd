@@ -13,8 +13,8 @@ npm install
 #    → "Charger l'extension décompilée" → sélectionner ce dossier
 
 # 3. Utiliser
-#    Raccourci par défaut : Ctrl+Shift+` (configurable dans chrome://extensions/shortcuts)
-#    L'interface shell s'ouvre dans l'onglet actif
+#    Raccourci par défaut : Ctrl+/ (configurable dans chrome://extensions/shortcuts)
+#    L'interface shell s'ouvre en plein écran (voile noir) sur l'onglet actif
 ```
 
 ## Développement
