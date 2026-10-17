@@ -411,7 +411,7 @@
     }
 
     if (type === "click") {
-      // Priorité : boutons, liens, éléments cliquables standards.
+      // Passe 1 : éléments cliquables standards (boutons, liens avec href).
       const clickable = document.querySelectorAll(
         "button, [role='button'], input[type='submit'], input[type='button'], a[href], [onclick]"
       );
@@ -425,37 +425,39 @@
         }
       });
 
-      // Détection large : tout élément avec cursor: pointer (menus, spans, etc.)
-      const all = document.querySelectorAll("span, div, li, a, p, h1, h2, h3, h4, td, th");
-      all.forEach((el) => {
-        // Déjà capté ?
-        if (el.id && seen.has("#" + el.id)) return;
-        let hasClass = false;
-        el.classList.forEach((c) => { if (seen.has("." + c)) hasClass = true; });
-        if (hasClass) return;
+      // Passe 2 : TOUT élément avec cursor: pointer et texte court.
+      // Capture les menus, spans, divs, li qui ne sont pas des boutons/liens standards.
+      const all = document.querySelectorAll("*");
+      const limit = Math.min(all.length, 500);
+      for (let i = 0; i < limit; i++) {
+        const el = all[i];
+        // Déjà capté par la passe 1 ?
+        if (el.id && seen.has("#" + el.id)) continue;
+        let hasSeenClass = false;
+        el.classList.forEach((c) => { if (seen.has("." + c)) hasSeenClass = true; });
+        if (hasSeenClass) continue;
 
-        // Texte propre : on prend textContent mais on vérifie que
-        // l'élément n'est pas juste un conteneur d'autres éléments cliquables.
         const txt = (el.textContent || "").trim();
-        if (!txt || txt.length > 40) return;
+        if (!txt || txt.length > 40) continue;
 
         try {
-          const style = window.getComputedStyle(el);
-          if (style.cursor !== "pointer") return;
-        } catch { return; }
+          const cursor = window.getComputedStyle(el).cursor;
+          if (cursor !== "pointer") continue;
+        } catch { continue; }
 
+        // On veut l'élément le plus "feuilles" possible :
+        // si un enfant a aussi cursor:pointer et le même texte, on préfère l'enfant.
         const short = txt.slice(0, 30);
         if (el.id) add("#" + el.id, `#${el.id} "${short}"`);
         else if (el.classList.length > 0) add("." + el.classList[0], `.${el.classList[0]} "${short}"`);
         else {
-          // Pas d'id ni class : on utilise un sélecteur basé sur le parent + position.
           const parent = el.parentNode;
-          if (!parent) return;
+          if (!parent) continue;
           const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
           const idx = siblings.indexOf(el) + 1;
           add(`${el.tagName.toLowerCase()}:nth-of-type(${idx})`, `${el.tagName.toLowerCase()} "${short}"`);
         }
-      });
+      }
     } else if (type === "fill") {
       // Priorité : inputs, textareas, selects.
       document.querySelectorAll("input, textarea, select").forEach((el) => {
