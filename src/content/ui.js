@@ -426,19 +426,18 @@
       });
 
       // Détection large : tout élément avec cursor: pointer (menus, spans, etc.)
-      // On scanne les éléments textuels courts qui sont cliquables visuellement.
       const all = document.querySelectorAll("span, div, li, a, p, h1, h2, h3, h4, td, th");
       all.forEach((el) => {
-        // Déjà capté par la passe ci-dessus ?
+        // Déjà capté ?
         if (el.id && seen.has("#" + el.id)) return;
         let hasClass = false;
         el.classList.forEach((c) => { if (seen.has("." + c)) hasClass = true; });
         if (hasClass) return;
 
+        // Texte propre : on prend textContent mais on vérifie que
+        // l'élément n'est pas juste un conteneur d'autres éléments cliquables.
         const txt = (el.textContent || "").trim();
         if (!txt || txt.length > 40) return;
-        // On ne veut que les feuilles (pas les parents qui contiennent d'autres éléments cliquables).
-        if (el.querySelector("button, a[href], [role='button']")) return;
 
         try {
           const style = window.getComputedStyle(el);
@@ -448,7 +447,14 @@
         const short = txt.slice(0, 30);
         if (el.id) add("#" + el.id, `#${el.id} "${short}"`);
         else if (el.classList.length > 0) add("." + el.classList[0], `.${el.classList[0]} "${short}"`);
-        else add(el.tagName.toLowerCase() + `:nth-child(${Array.from(el.parentNode.children).indexOf(el) + 1})`, `${el.tagName.toLowerCase()} "${short}"`);
+        else {
+          // Pas d'id ni class : on utilise un sélecteur basé sur le parent + position.
+          const parent = el.parentNode;
+          if (!parent) return;
+          const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+          const idx = siblings.indexOf(el) + 1;
+          add(`${el.tagName.toLowerCase()}:nth-of-type(${idx})`, `${el.tagName.toLowerCase()} "${short}"`);
+        }
       });
     } else if (type === "fill") {
       // Priorité : inputs, textareas, selects.
