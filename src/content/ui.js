@@ -304,6 +304,31 @@
   }
 
   /**
+   * Place le marqueur rouge directement sur un sélecteur CSS
+   * (version live pour l'autocomplétion, sans parser la commande).
+   * @param {string} selector - sélecteur CSS
+   */
+  function liveMarkTarget(selector) {
+    clearMarker();
+    if (!selector) return;
+    let target;
+    try { target = document.querySelector(selector); } catch { return; }
+    if (!target) return;
+
+    if (!markerEl) {
+      markerEl = document.createElement("div");
+      markerEl.className = "bc-marker";
+      document.body.appendChild(markerEl);
+    }
+
+    const rect = target.getBoundingClientRect();
+    markerEl.style.position = "fixed";
+    markerEl.style.left = (rect.left + rect.width / 2 - 8) + "px";
+    markerEl.style.top = (rect.top + rect.height / 2 - 8) + "px";
+    markerEl.style.display = "block";
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  /**
    * Gère les touches sur la ligne de saisie.
    * - Enter : exécute la commande.
    * - Tab : complète la commande.
@@ -333,6 +358,7 @@
       if (suggestions.length > 0 && suggestIndex >= 0) {
         if (suggestIndex > 0) suggestIndex--;
         renderSuggest();
+        liveMarkTarget(suggestions[suggestIndex].value);
       } else {
         navigateHistory(-1);
       }
@@ -341,6 +367,7 @@
       if (suggestions.length > 0 && suggestIndex >= 0) {
         if (suggestIndex < suggestions.length - 1) suggestIndex++;
         renderSuggest();
+        liveMarkTarget(suggestions[suggestIndex].value);
       } else {
         navigateHistory(1);
       }
@@ -470,8 +497,12 @@
       suggestIndex = suggestions.length > 0 ? 0 : -1;
       if (suggestions.length === 0) {
         hideSuggest();
+        clearMarker();
       } else {
         renderSuggest();
+        // Marqueur rouge sur la suggestion active en temps réel.
+        const active = suggestions[suggestIndex >= 0 ? suggestIndex : 0];
+        liveMarkTarget(active.value);
       }
       return;
     }
@@ -664,6 +695,7 @@
    */
   function closePanel() {
     if (panelEl) panelEl.style.display = "none";
+    clearMarker();
   }
 
   // Branche les callbacks attendus par state.js / commands.js.
