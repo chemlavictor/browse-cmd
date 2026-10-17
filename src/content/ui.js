@@ -457,7 +457,7 @@
       // Autocomplétion des sélecteurs DOM.
       const allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
       const filtered = typePart.length > 0
-        ? allSelectors.filter((s) => s.value.toLowerCase().startsWith(typePart) || s.label.toLowerCase().startsWith(typePart))
+        ? allSelectors.filter((s) => s.value.toLowerCase().includes(typePart) || s.label.toLowerCase().includes(typePart))
         : allSelectors.slice(0, 20);
       suggestions = filtered;
       suggestIndex = suggestions.length > 0 ? 0 : -1;
@@ -488,10 +488,13 @@
         completeTo(s.value);
       });
       suggestEl.appendChild(item);
+      // S'assure que l'élément actif est visible dans le menu.
+      if (i === suggestIndex) {
+        item.scrollIntoView({ block: "nearest" });
+      }
     });
     suggestEl.style.display = "block";
   }
-
   /**
    * Cache le menu de suggestions.
    */
