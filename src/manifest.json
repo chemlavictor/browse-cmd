@@ -2,12 +2,12 @@
   "manifest_version": 3,
   "name": "browse-cmd",
   "version": "0.1.0",
-  "description": "Interface shell dans la page active, pilotable par raccourci clavier (Ctrl+/).",
+  "description": "Interface shell dans la page active, pilotable par raccourci clavier (Ctrl+Shift+/).",
   "permissions": ["activeTab", "scripting"],
   "commands": {
     "toggle-shell": {
       "suggested_key": {
-        "default": "Ctrl+/"
+        "default": "Ctrl+Shift+/"
       },
       "description": "Ouvrir/fermer le shell"
     }

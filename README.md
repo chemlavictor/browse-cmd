@@ -12,7 +12,7 @@ Pas de build step — le code est vanilla JS, on charge le dossier `src/` tel qu
    → "Charger l'extension décompilée" → sélectionner le dossier src/
 
 2. Utiliser
-   Raccourci par défaut : Ctrl+/ (configurable dans chrome://extensions/shortcuts)
+   Raccourci par défaut : Ctrl+Shift+/ (configurable dans chrome://extensions/shortcuts)
    L'interface shell s'ouvre en plein écran (voile noir) sur l'onglet actif
 ```
 

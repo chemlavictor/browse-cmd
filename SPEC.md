@@ -6,14 +6,14 @@
 ## 1. Vision
 
 [VALIDÉ]
-Extension Chrome activable par raccourci clavier (`Ctrl+/`). Elle superpose une interface shell plein écran (voile noir) sur la page active, permettant de saisir des commandes exécutées directement dans la page.
+Extension Chrome activable par raccourci clavier (`Ctrl+Shift+/`). Elle superpose une interface shell plein écran (voile noir) sur la page active, permettant de saisir des commandes exécutées directement dans la page.
 
 ## 2. Cas d'usage
 [VALIDÉ]
-1. Dev/Front sur une page : ouvre le shell (Ctrl+/), tape une commande, lit le résultat, ferme le shell.
+1. Dev/Front sur une page : ouvre le shell (Ctrl+Shift+/), tape une commande, lit le résultat, ferme le shell.
 2. Commandes utiles typiques : `eval "..."`, `click <sélecteur>`, `get <sélecteur>`, `copy <sélecteur>`, `url`, `tab`, `clear`, `help`.
 3. Historique des commandes récentes (↑/↓) — **partagé entre onglets** (`chrome.storage.session`).
-4. **Toggle** : `Ctrl+/` ouvre et referme le shell. Un seul panneau ouvert à la fois (un nouvel onglet fermant le précédent). Le texte en cours n'est pas partagé entre onglets (limite technique).
+4. **Toggle** : `Ctrl+Shift+/` ouvre et referme le shell. Un seul panneau ouvert à la fois (un nouvel onglet fermant le précédent). Le texte en cours n'est pas partagé entre onglets (limite technique).
 
 ## 3. Commandes
 
@@ -79,13 +79,13 @@ content script (injecté automatiquement dans toutes les pages via manifest)
 
 | # | Décision | Choix |
 |---|---|---|
-| 1 | Raccourci clavier | `Ctrl+/` |
+| 1 | Raccourci clavier | `Ctrl+Shift+/` |
 | 2 | `eval` | conservé (arbitraire, contexte page) |
 | 3 | Commandes additionnelles | `copy` ajouté ; `type`/`scroll`/`set` écartés |
 | 4 | Shell | `80vw × 60vh`, centré, voile noir `rgba(0,0,0,0.85)` |
 | 5 | `get` output | `outer` (défaut) / `inner` (option) |
 | 6 | `eval` output | JSON formaté si objet, sinon String |
 | 7 | Historique | partagé entre onglets via `chrome.storage.session` |
-| 8 | Toggle | `Ctrl+/` ouvre+referme, un seul panneau à la fois |
+| 8 | Toggle | `Ctrl+Shift+/` ouvre+referme, un seul panneau à la fois |
 | 9 | Permissions | `activeTab` + `scripting` uniquement |
 | 10 | Injection | content script auto via manifest |
