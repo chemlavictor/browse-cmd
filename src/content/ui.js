@@ -146,6 +146,13 @@
     inputEl.addEventListener("keydown", onKeydown);
     inputEl.addEventListener("input", onInput);
 
+    // Empêche le focus automatique sur l'input quand on clique
+    // ailleurs dans le panneau (output, titlebar, etc.).
+    panelEl.addEventListener("mousedown", (e) => {
+      if (e.target === inputEl || e.target.closest(".bc-suggest-item")) return;
+      e.preventDefault();
+    });
+
     // Drag : mousedown sur la barre de titre.
     titleEl.addEventListener("mousedown", (e) => {
       // Pas de drag si clic sur un bouton.
