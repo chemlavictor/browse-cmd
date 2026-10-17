@@ -1,0 +1,274 @@
+/**
+ * ui.js — Interface shell (shadow root + styles).
+ *
+ * Crée un <div id="browse-cmd-root"> avec une shadow root isolée.
+ * À l'intérieur : un voile noir plein écran + un panneau shell centré.
+ *
+ * Layout (§5 SPEC) :
+ *  - Voile : rgba(0,0,0,0.85), recouvre toute la page.
+ *  - Shell : 80vw × 60vh, centré.
+ *  - Zone de scroll fixe en haut (historique des sorties défile).
+ *  - Ligne de saisie fixe en bas avec prompt `❯`.
+ *
+ * Chargé après state.js et commands.js (voir manifest content_scripts.js).
+ *
+ * Callbacks globaux (rappelés par state.js / commands.js) :
+ *  - window.__browseCmdOnOpen()   → rend visible le panneau.
+ *  - window.__browseCmdOnClose()  → rend invisible le panneau.
+ *  - window.__browseCmdOnOutput({type, text}) → ajoute une ligne à la zone de scroll.
+ *  - window.__browseCmdClear()    → vide la zone de scroll.
+ */
+
+(function () {
+  "use strict";
+
+  const ROOT_ID = "browse-cmd-root";
+
+  /** Éléments DOM (remplis dans build()). */
+  let overlayEl = null;
+  let outputEl = null;
+  let inputEl = null;
+  let inputIndex = -1;
+  let draft = "";
+
+  /**
+   * Construit le DOM du shell dans une shadow root.
+   * Idempotent : ne recrée pas si déjà présent.
+   */
+  function build() {
+    if (document.getElementById(ROOT_ID)) return;
+
+    const host = document.createElement("div");
+    host.id = ROOT_ID;
+    const shadow = host.attachShadow({ mode: "open" });
+
+    const style = document.createElement("style");
+    style.textContent = CSS;
+    shadow.appendChild(style);
+
+    // Voile noir plein écran.
+    overlayEl = document.createElement("div");
+    overlayEl.className = "bc-overlay";
+    shadow.appendChild(overlayEl);
+
+    // Panneau shell centré.
+    const panel = document.createElement("div");
+    panel.className = "bc-panel";
+
+    // Zone de scroll (historique des sorties).
+    outputEl = document.createElement("div");
+    outputEl.className = "bc-output";
+    panel.appendChild(outputEl);
+
+    // Ligne de saisie.
+    const inputRow = document.createElement("div");
+    inputRow.className = "bc-input-row";
+
+    const prompt = document.createElement("span");
+    prompt.className = "bc-prompt";
+    prompt.textContent = "❯";
+    inputRow.appendChild(prompt);
+
+    inputEl = document.createElement("input");
+    inputEl.className = "bc-input";
+    inputEl.type = "text";
+    inputEl.autocomplete = "off";
+    inputEl.spellcheck = false;
+    inputRow.appendChild(inputEl);
+
+    panel.appendChild(inputRow);
+    shadow.appendChild(panel);
+
+    document.body.appendChild(host);
+
+    // Événements clavier sur l'input.
+    inputEl.addEventListener("keydown", onKeydown);
+    // Focus auto à l'ouverture.
+    inputEl.addEventListener("focus", () => {
+      /* no-op — le focus est géré par openPanel */
+    });
+  }
+
+  /**
+   * Gère les touches sur la ligne de saisie.
+   * - Enter : exécute la commande.
+   * - ↑ / ↓ : navigue dans l'historique.
+   * - Esc : ferme le shell.
+   * @param {KeyboardEvent} e
+   */
+  function onKeydown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const cmd = inputEl.value;
+      inputEl.value = "";
+      draft = "";
+      inputIndex = -1;
+      window.BrowseCmd.runCommand(cmd);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      window.BrowseCmd.toggle();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      navigateHistory(-1);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      navigateHistory(1);
+    }
+  }
+
+  /**
+   * Navigue dans l'historique des commandes.
+   * @param {number} dir - -1 pour ↑ (anciennes), +1 pour ↓ (récentes).
+   */
+  function navigateHistory(dir) {
+    const history = window.BrowseCmd.history;
+    if (history.length === 0) return;
+
+    if (dir === -1) {
+      // ↑ : va vers une commande plus ancienne.
+      if (inputIndex === -1) {
+        draft = inputEl.value;
+        inputIndex = history.length - 1;
+      } else if (inputIndex > 0) {
+        inputIndex--;
+      }
+      inputEl.value = history[inputIndex];
+    } else {
+      // ↓ : va vers une commande plus récente.
+      if (inputIndex === -1) return;
+      if (inputIndex < history.length - 1) {
+        inputIndex++;
+        inputEl.value = history[inputIndex];
+      } else {
+        inputIndex = -1;
+        inputEl.value = draft;
+      }
+    }
+    // Curseur à la fin.
+    inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+  }
+
+  /**
+   * Ajoute une ligne dans la zone de scroll.
+   * @param {{type: string, text: string}} entry
+   *   type: "cmd" (commande saisie), "out" (sortie), "err" (erreur).
+   */
+  function appendOutput({ type, text }) {
+    if (!outputEl) return;
+    const line = document.createElement("div");
+    line.className = `bc-line bc-${type}`;
+
+    if (type === "cmd") {
+      line.textContent = `❯ ${text}`;
+    } else {
+      line.textContent = text;
+      line.style.whiteSpace = "pre-wrap";
+    }
+    outputEl.appendChild(line);
+
+    // Défile en bas.
+    outputEl.scrollTop = outputEl.scrollHeight;
+  }
+
+  /**
+   * Vide la zone de scroll (commande `clear`).
+   */
+  function clearOutput() {
+    if (outputEl) outputEl.innerHTML = "";
+  }
+
+  /**
+   * Rend le panneau visible et focus l'input.
+   */
+  function openPanel() {
+    if (!overlayEl) build();
+    overlayEl.style.display = "flex";
+    if (inputEl) {
+      inputEl.focus();
+      inputEl.select();
+    }
+  }
+
+  /**
+   * Rend le panneau invisible (ne le détruit pas — réouverture rapide).
+   */
+  function closePanel() {
+    if (overlayEl) overlayEl.style.display = "none";
+  }
+
+  // Branche les callbacks attendus par state.js / commands.js.
+  window.__browseCmdOnOpen = openPanel;
+  window.__browseCmdOnClose = closePanel;
+  window.__browseCmdOnOutput = appendOutput;
+  window.__browseCmdClear = clearOutput;
+
+  /**
+   * CSS du shell (scope shadow root — aucune fuite vers la page).
+   */
+  const CSS = `
+    :host {
+      all: initial;
+    }
+    .bc-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2147483647;
+      font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+      font-size: 14px;
+    }
+    .bc-panel {
+      width: 80vw;
+      height: 60vh;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: 8px;
+      border: 1px solid #45475a;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+    .bc-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      line-height: 1.5;
+    }
+    .bc-line {
+      margin: 0;
+    }
+    .bc-cmd {
+      color: #89b4fa;
+    }
+    .bc-out {
+      color: #cdd6f4;
+    }
+    .bc-err {
+      color: #f38ba8;
+    }
+    .bc-input-row {
+      display: flex;
+      align-items: center;
+      border-top: 1px solid #45475a;
+      padding: 8px 16px;
+      gap: 8px;
+    }
+    .bc-prompt {
+      color: #a6e3a1;
+      flex-shrink: 0;
+    }
+    .bc-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #cdd6f4;
+      font-family: inherit;
+      font-size: inherit;
+      caret-color: #a6e3a1;
+    }
+  `;
+})();

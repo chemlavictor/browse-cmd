@@ -4,43 +4,56 @@ Extension Chrome qui ouvre une interface shell dans la page active, pilotable pa
 
 ## Quick start
 
-```bash
-# 1. Installer les dépendances
-npm install
+Pas de build step — le code est vanilla JS, on charge le dossier `src/` tel quel.
 
-# 2. Charger l'extension en mode développeur
-#    Chrome → chrome://extensions → Activer le mode développeur
-#    → "Charger l'extension décompilée" → sélectionner ce dossier
+```
+1. Charger l'extension en mode développeur
+   Chrome → chrome://extensions → Activer le mode développeur
+   → "Charger l'extension décompilée" → sélectionner le dossier src/
 
-# 3. Utiliser
-#    Raccourci par défaut : Ctrl+/ (configurable dans chrome://extensions/shortcuts)
-#    L'interface shell s'ouvre en plein écran (voile noir) sur l'onglet actif
+2. Utiliser
+   Raccourci par défaut : Ctrl+/ (configurable dans chrome://extensions/shortcuts)
+   L'interface shell s'ouvre en plein écran (voile noir) sur l'onglet actif
 ```
 
-## Développement
+## Commandes
 
-```bash
-npm run dev      # build watcher
-npm run build    # build production
-npm run lint     # vérification du code
-npm test         # tests
-```
+| Commande | Description |
+|---|---|
+| `help` | liste les commandes |
+| `clear` | efface le shell |
+| `url` | affiche l'URL courante |
+| `tab <url>` | ouvre l'URL dans un nouvel onglet |
+| `get <sel> [inner\|outer]` | renvoie le HTML d'un élément |
+| `click <sel>` | clique sur un élément |
+| `copy <sel>` | copie le texte d'un élément |
+| `eval <js>` | exécute du JS dans la page |
+
+Historique : `↑`/`↓` navigue dans les commandes récentes (partagé entre onglets).
+
+## Sécurité
+
+`eval` exécute du JS arbitraire **dans la page**. Le raccourci clavier est la seule
+"authentification". Usage local/dev uniquement.
 
 ## Structure
 
 ```
 browse-cmd/
-├── SPEC.md          # spécifications (source de vérité)
+├── SPEC.md                  # spécifications (source de vérité)
 ├── README.md
 ├── package.json
-├── manifest.json    # manifest V3 de l'extension
-├── src/
-│   ├── background/  # service worker
-│   ├── content/     # script content (injection de l'UI shell)
-│   └── ui/          # interface shell
-└── tests/
+└── src/
+    ├── manifest.json        # manifest V3 de l'extension
+    ├── background/
+    │   └── service-worker.js # reçoit le raccourci, envoie "toggle"
+    └── content/
+        ├── state.js          # toggle, historique, panel unique
+        ├── commands.js       # table de commandes
+        ├── ui.js             # shell UI (shadow root + styles)
+        └── content-script.js # écoute les messages du background
 ```
 
 ## État
 
-🚧 En cours — voir [SPEC.md](./SPEC.md) pour les spécifications.
+✅ Fonctionnel — voir [SPEC.md](./SPEC.md) pour les spécifications.

@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "browse-cmd",
+  "version": "0.1.0",
+  "description": "Interface shell dans la page active, pilotable par raccourci clavier (Ctrl+/).",
+  "permissions": ["activeTab", "scripting"],
+  "commands": {
+    "toggle-shell": {
+      "suggested_key": {
+        "default": "Ctrl+/"
+      },
+      "description": "Ouvrir/fermer le shell"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/content/state.js",
+        "src/content/commands.js",
+        "src/content/ui.js",
+        "src/content/content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

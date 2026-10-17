@@ -1,0 +1,12 @@
+{
+  "name": "browse-cmd",
+  "version": "0.1.0",
+  "description": "Chrome extension qui ouvre une interface shell dans la page active, pilotable par raccourci clavier (Ctrl+/).",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Charger src/ dans chrome://extensions (mode dev)'",
+    "build": "echo 'Pas de build step — code vanilla, charger src/ tel quel'",
+    "lint": "echo 'Pas de linter configuré'",
+    "test": "echo 'Pas de tests automatisés — voir README pour le smoke test manuel'"
+  }
+}
