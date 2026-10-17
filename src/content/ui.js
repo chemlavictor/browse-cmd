@@ -378,12 +378,9 @@
       // Priorité : boutons, liens, éléments cliquables.
       document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a[href], [onclick]").forEach((el) => {
         if (el.id) add("#" + el.id);
-        // Sélecteur par texte (court).
-        const txt = (el.textContent || "").trim();
-        if (txt && txt.length <= 20) add(`text:"${txt}"`);
         el.classList.forEach((c) => add("." + c));
       });
-      // Tags button et a en dernier recours.
+      // Tags en dernier recours.
       if (document.querySelector("button")) add("button");
       if (document.querySelector("a")) add("a");
     } else if (type === "fill") {
@@ -501,11 +498,22 @@
   }
 
   /**
-   * Remplit l'input avec la suggestion + un espace.
+   * Remplace le token en cours de saisie par la suggestion.
+   * Si l'input est "k #sub" et la suggestion est "#submit",
+   * le résultat est "k #submit " (le #sub est remplacé par #submit).
+   * Si l'input est "k " (juste la commande), le résultat est "k #submit ".
    * @param {string} s
    */
   function completeTo(s) {
-    inputEl.value = s + " ";
+    const val = inputEl.value;
+    const lastSpace = val.lastIndexOf(" ");
+    if (lastSpace === -1) {
+      // Pas d'espace : on remplace tout (complétion de commande).
+      inputEl.value = s + " ";
+    } else {
+      // On garde la partie avant le dernier espace + la suggestion.
+      inputEl.value = val.slice(0, lastSpace + 1) + s + " ";
+    }
     hideSuggest();
     inputEl.focus();
   }
