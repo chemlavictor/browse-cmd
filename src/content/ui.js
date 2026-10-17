@@ -239,6 +239,63 @@
     }
   }
 
+  /** Élément marqueur rouge (créé une fois, réutilisé). */
+  let markerEl = null;
+
+  /**
+   * Place un point rouge sur l'élément cible de la commande.
+   * @param {string} cmd - commande brute (ex: "k #submit")
+   */
+  function markTarget(cmd) {
+    clearMarker();
+    const parts = cmd.trim().split(/\s+/);
+    if (parts.length < 2) return;
+    const name = parts[0].toLowerCase();
+    // Seuls les commandes avec sélecteur ont un marqueur.
+    const selectorCmds = { k: 1, click: 1, f: 1, fill: 1, g: 1, get: 1, y: 1, copy: 1 };
+    if (!selectorCmds[name]) return;
+
+    // Le sélecteur est le 2e token (sauf pour get avec mode i/o).
+    let selector = parts[1];
+    // Pour get, le mode i/o est le dernier token — on le retire si présent.
+    if ((name === "g" || name === "get") && parts.length > 2) {
+      const last = parts[parts.length - 1];
+      if (last === "i" || last === "inner" || last === "o" || last === "outer") {
+        selector = parts.slice(1, -1).join(" ");
+      }
+    }
+    // Pour fill, le texte est après le sélecteur — on prend juste le 2e token.
+
+    let target;
+    try { target = document.querySelector(selector); } catch { return; }
+    if (!target) return;
+
+    // Crée le marqueur s'il n'existe pas.
+    if (!markerEl) {
+      markerEl = document.createElement("div");
+      markerEl.className = "bc-marker";
+      document.body.appendChild(markerEl);
+    }
+
+    // Positionne le marqueur au centre de l'élément.
+    const rect = target.getBoundingClientRect();
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    markerEl.style.position = "fixed";
+    markerEl.style.left = (rect.left + rect.width / 2 - 8) + "px";
+    markerEl.style.top = (rect.top + rect.height / 2 - 8) + "px";
+    markerEl.style.display = "block";
+    // Fait défiler l'élément en vue.
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  /**
+   * Efface le marqueur rouge.
+   */
+  function clearMarker() {
+    if (markerEl) markerEl.style.display = "none";
+  }
+
   /**
    * Gère les touches sur la ligne de saisie.
    * - Enter : exécute la commande.
@@ -255,6 +312,7 @@
       inputEl.value = "";
       draft = "";
       inputIndex = -1;
+      markTarget(cmd);
       window.BrowseCmd.runCommand(cmd);
     } else if (e.key === "Tab") {
       e.preventDefault();
@@ -384,10 +442,14 @@
     const cmdPart = val.slice(0, spaceIdx).toLowerCase();
     const typePart = val.slice(spaceIdx + 1).toLowerCase();
 
-    if (SELECTOR_CMDS[cmdPart] && typePart.length > 0) {
+    if (SELECTOR_CMDS[cmdPart]) {
       // Autocomplétion des sélecteurs DOM.
+      // Affiche les suggestions même si typePart est vide (après l'espace).
       const allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
-      suggestions = allSelectors.filter((s) => s.toLowerCase().startsWith(typePart) && s !== typePart);
+      const filtered = typePart.length > 0
+        ? allSelectors.filter((s) => s.toLowerCase().startsWith(typePart) && s !== typePart)
+        : allSelectors.slice(0, 20); // max 20 si pas de filtre
+      suggestions = filtered;
       suggestIndex = suggestions.length > 0 ? 0 : -1;
       if (suggestions.length === 0) {
         hideSuggest();
@@ -478,6 +540,30 @@
   }
 
   /**
+   * Échappe le HTML pour éviter l'injection.
+   * @param {string} s
+   * @returns {string}
+   */
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /**
+   * Colorise une ligne de commande : nom=vert, args=bleu.
+   * @param {string} text
+   * @returns {string} HTML
+   */
+  function colorizeCmd(text) {
+    const spaceIdx = text.indexOf(" ");
+    if (spaceIdx === -1) {
+      return `<span class="bc-cmd-color">${esc(text)}</span>`;
+    }
+    const name = text.slice(0, spaceIdx);
+    const args = text.slice(spaceIdx);
+    return `<span class="bc-cmd-color">${esc(name)}</span><span class="bc-args-color">${esc(args)}</span>`;
+  }
+
+  /**
    * Ajoute une ligne dans la zone de scroll.
    * @param {{type: string, text: string}} entry
    */
@@ -486,7 +572,7 @@
     const line = document.createElement("div");
     line.className = `bc-line bc-${type}`;
     if (type === "cmd") {
-      line.textContent = `❯ ${text}`;
+      line.innerHTML = `❯ ${colorizeCmd(text)}`;
     } else {
       line.textContent = text;
       line.style.whiteSpace = "pre-wrap";
@@ -711,5 +797,36 @@
       background: #313244;
       color: #cdd6f4;
     }
+    /* Coloration syntaxique : nom de commande = vert, args = bleu. */
+    .bc-cmd-color {
+      color: #a6e3a1;
+      font-weight: bold;
+    }
+    .bc-args-color {
+      color: #89b4fa;
+    }
   `;
+
+  /* CSS du marqueur rouge (hors shadow root, dans le DOM de la page). */
+  const MARKER_CSS = `
+    .bc-marker {
+      position: fixed;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(243, 139, 168, 0.9);
+      border: 2px solid #fff;
+      box-shadow: 0 0 8px rgba(243, 139, 168, 0.6);
+      pointer-events: none;
+      z-index: 2147483647;
+      display: none;
+    }
+  `;
+
+  // Injecte le CSS du marqueur dans la page (hors shadow root).
+  (function injectMarkerCSS() {
+    const style = document.createElement("style");
+    style.textContent = MARKER_CSS;
+    document.head.appendChild(style);
+  })();
 })();
