@@ -8,7 +8,7 @@ SHELL := /bin/bash
 SRC   := src
 DIST  := dist
 NAME  := browse-cmd
-JS_FILES := background/service-worker.js content/state.js content/commands.js content/ui.js content/content-script.js
+JS_FILES := background/service-worker.js content/state.js content/commands.js content/content-script.js sidepanel/sidepanel.js
 
 .PHONY: all build_prod clean help
 
@@ -17,9 +17,10 @@ all: build_prod
 ## build_prod — compile l'extension pour la prod dans dist/
 build_prod:
 	@echo "→ Build production de $(NAME)"
-	@mkdir -p $(DIST)/background $(DIST)/content $(DIST)/icons
+	@mkdir -p $(DIST)/background $(DIST)/content $(DIST)/icons $(DIST)/sidepanel
 	@cp $(SRC)/manifest.json $(DIST)/manifest.json
 	@cp $(SRC)/icons/icon-16.png $(SRC)/icons/icon-48.png $(SRC)/icons/icon-128.png $(DIST)/icons/
+	@cp $(SRC)/sidepanel/sidepanel.html $(DIST)/sidepanel/
 	@for f in $(JS_FILES); do \
 		echo "  minify: $$f"; \
 		node -e "\
@@ -31,7 +32,7 @@ build_prod:
 			fs.writeFileSync('$(DIST)/$$f', s); \
 		"; \
 	done
-	@cd $(DIST) && sha256sum manifest.json background/service-worker.js content/state.js content/commands.js content/ui.js content/content-script.js icons/icon-16.png icons/icon-48.png icons/icon-128.png > CHECKSUMS.sha256
+	@cd $(DIST) && sha256sum manifest.json background/service-worker.js content/state.js content/commands.js content/content-script.js sidepanel/sidepanel.html sidepanel/sidepanel.js icons/icon-16.png icons/icon-48.png icons/icon-128.png > CHECKSUMS.sha256
 	@echo "→ Done. Contenu de $(DIST)/ :"
 	@find $(DIST) -type f | sort | sed 's/^/   /'
 	@echo "→ Prêt pour la Chrome Web Store : dossier $(DIST)/"

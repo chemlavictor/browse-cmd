@@ -1,22 +1,35 @@
 /**
  * content-script.js — Point d'entrée du content script.
  *
- * Charge en dernier (voir manifest content_scripts.js). Son seul rôle :
- * écouter les messages du background service worker et déclencher
- * le toggle du shell.
+ * Écoute les messages du side panel (chrome.runtime.sendMessage)
+ * et exécute les commandes sur le DOM de la page.
  *
- * Les modules state.js, commands.js et ui.js sont déjà chargés
- * et ont initialisé la namespace window.BrowseCmd + les callbacks UI.
+ * Flux :
+ *  - Reçoit { type: "exec", cmd: "..." } du side panel.
+ *  - Exécute la commande via BrowseCmd.exec (défini par commands.js).
+ *  - Répond { type: "result", text: "..." } ou { type: "error", text: "..." }.
+ *
+ * Les modules state.js, commands.js sont déjà chargés
+ * (voir manifest content_scripts.js). ui.js n'est plus nécessaire
+ * (le side panel gère l'UI), mais il reste chargé pour compatibilité.
  */
 
 (function () {
   "use strict";
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "toggle") {
-      window.BrowseCmd.toggle();
-      sendResponse({ ok: true });
+    // Message du side panel : exécuter une commande.
+    if (message?.type === "exec") {
+      try {
+        const result = window.BrowseCmd.exec(message.cmd);
+        sendResponse({ type: "result", text: result ?? "" });
+      } catch (err) {
+        sendResponse({
+          type: "error",
+          text: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return; // Réponse synchron via sendResponse.
     }
-    // Pas de réponse asynchrone : on retourne false.
   });
 })();

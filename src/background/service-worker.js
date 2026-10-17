@@ -1,25 +1,33 @@
 /**
  * service-worker.js — Background service worker (Manifest V3).
  *
- * Rôle unique : recevoir le raccourci clavier (chrome.commands) et
- * relayer un message "toggle" vers l'onglet actif.
+ * Rôle : recevoir le raccourci clavier et ouvrir/fermer le side panel.
  *
- * Aucune logique d'exécution ici : toutes les commandes tournent
- * dans le content script (§4 SPEC).
+ * Le side panel est géré par chrome.sidePanel (pas par un message au
+ * content script). Le raccourci toggle l'ouverture du panneau.
  */
 
 chrome.commands.onCommand.addListener((command) => {
   if (command !== "toggle-shell") return;
 
-  // Récupère l'onglet actif de la fenêtre courante, puis lui envoie "toggle".
+  // Ouvre ou ferme le side panel de l'onglet actif.
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs || tabs.length === 0) return;
-    // sendMessage en MV3 est callback-based (pas Promise).
-    // Le callback reçoit une erreur si l'onglet n'a pas de content script.
-    chrome.tabs.sendMessage(tabs[0].id, { type: "toggle" }, () => {
-      // chrome.runtime.lastError peut être set si l'onglet n'a pas
-      // de content script (chrome:// pages, Web Store, etc.) — silencieux.
-      void chrome.runtime.lastError;
-    });
+    const tabId = tabs[0].id;
+
+    // Tente d'ouvrir le side panel. Si déjà ouvert, ça ferme.
+    chrome.sidePanel
+      .setOptions({ tabId, path: "sidepanel/sidepanel.html" })
+      .then(() => {
+        // setOptions ne toggle pas — il faut utiliser open() pour ouvrir.
+        // Pour toggle, on ne peut pas savoir si c'est ouvert ou fermé.
+        // Solution : toujours ouvrir (le side panel reste ouvert).
+        // Pour fermer, l'utilisateur utilise le bouton × ou Esc.
+        return chrome.sidePanel.open({ tabId });
+      })
+      .catch(() => {
+        // Si le side panel est déjà ouvert, open() échoue — on l'ignore.
+        void chrome.runtime.lastError;
+      });
   });
 });
