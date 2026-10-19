@@ -30,6 +30,7 @@
   let outputEl = null;
   let inputEl = null;
   let suggestEl = null;
+  let loadingEl = null;
   let inputIndex = -1;
   let draft = "";
   let suggestions = [];
@@ -116,6 +117,12 @@
     suggestEl = document.createElement("div");
     suggestEl.className = "bc-suggest";
     panelEl.appendChild(suggestEl);
+
+    // Indicateur de chargement (affiché pendant le scan DOM).
+    loadingEl = document.createElement("div");
+    loadingEl.className = "bc-loading";
+    loadingEl.textContent = "⏳ Scan du DOM…";
+    panelEl.appendChild(loadingEl);
 
     // Ligne de saisie.
     const inputRow = document.createElement("div");
@@ -248,6 +255,7 @@
 
   /** Élément marqueur rouge (créé une fois, réutilisé). */
   let markerEl = null;
+  let markerSweepEl = null;
 
   /**
    * Place un point rouge sur l'élément cible de la commande.
@@ -322,10 +330,43 @@
     }
 
     const rect = target.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
     markerEl.style.position = "fixed";
-    markerEl.style.left = (rect.left + rect.width / 2 - 8) + "px";
-    markerEl.style.top = (rect.top + rect.height / 2 - 8) + "px";
+    markerEl.style.left = (cx - 8) + "px";
+    markerEl.style.top = (cy - 8) + "px";
     markerEl.style.display = "block";
+
+    // Animation : cercle qui rétrécit vers le point rouge (ciblage).
+    // Attend 500ms avant de lancer pour laisser l'œil se positionner.
+    try {
+      if (!markerSweepEl) {
+        markerSweepEl = document.createElement("div");
+        markerSweepEl.className = "bc-marker-sweep";
+        document.body.appendChild(markerSweepEl);
+      }
+      setTimeout(() => {
+        try {
+          // Recalculer la position (scroll peut avoir bougé)
+          const rect = target.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          markerEl.style.left = (cx - 8) + "px";
+          markerEl.style.top = (cy - 8) + "px";
+          const sweepSize = Math.max(window.innerWidth, window.innerHeight) / 2;
+          markerSweepEl.style.left = cx + "px";
+          markerSweepEl.style.top = cy + "px";
+          markerSweepEl.style.setProperty("--sweep-size", sweepSize + "px");
+          markerSweepEl.style.display = "none";
+          void markerSweepEl.offsetWidth;
+          markerSweepEl.style.display = "block";
+          markerSweepEl.style.animation = "none";
+          void markerSweepEl.offsetWidth;
+          markerSweepEl.style.animation = "bc-sweep 0.8s ease-out forwards";
+        } catch {}
+      }, 500);
+    } catch {}
+
     target.scrollIntoView({ block: "center", behavior: "smooth" });
   }
   /**
@@ -425,38 +466,130 @@
         }
       });
 
-      // Passe 2 : TOUT élément avec cursor: pointer et texte court.
-      // Capture les menus, spans, divs, li qui ne sont pas des boutons/liens standards.
-      const all = document.querySelectorAll("*");
-      const limit = Math.min(all.length, 500);
-      for (let i = 0; i < limit; i++) {
-        const el = all[i];
-        // Déjà capté par la passe 1 ?
-        if (el.id && seen.has("#" + el.id)) continue;
-        let hasSeenClass = false;
-        el.classList.forEach((c) => { if (seen.has("." + c)) hasSeenClass = true; });
-        if (hasSeenClass) continue;
+      // Passe 2 : TreeWalker sur TOUS les nœuds text (comme Ctrl+F).
+      // Chaque nœud text visible → construire un sélecteur CSS unique garanti.
+      try {
+        const SKIP = new Set(["SCRIPT","STYLE","NOSCRIPT","TEMPLATE","HEAD","META","LINK","TITLE"]);
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const t = (node.textContent || "").trim();
+            if (!t || t.length > 60) return NodeFilter.FILTER_REJECT;
+            const p = node.parentElement;
+            if (!p || SKIP.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
 
-        const txt = (el.textContent || "").trim();
-        if (!txt || txt.length > 40) continue;
-
-        try {
-          const cursor = window.getComputedStyle(el).cursor;
-          if (cursor !== "pointer") continue;
-        } catch { continue; }
-
-        // On veut l'élément le plus "feuilles" possible :
-        // si un enfant a aussi cursor:pointer et le même texte, on préfère l'enfant.
-        const short = txt.slice(0, 30);
-        if (el.id) add("#" + el.id, `#${el.id} "${short}"`);
-        else if (el.classList.length > 0) add("." + el.classList[0], `.${el.classList[0]} "${short}"`);
-        else {
-          const parent = el.parentNode;
-          if (!parent) continue;
-          const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
-          const idx = siblings.indexOf(el) + 1;
-          add(`${el.tagName.toLowerCase()}:nth-of-type(${idx})`, `${el.tagName.toLowerCase()} "${short}"`);
+        // Construit un sélecteur CSS unique pour un élément donné.
+        // Monte vers le haut jusqu'à trouver un id ou une class unique.
+        function uniqueSelector(el) {
+          // Si l'élément a un id → c'est unique
+          if (el.id) return "#" + el.id;
+          // Si l'élément a une class unique → ok
+          for (const c of el.classList) {
+            try {
+              if (document.querySelectorAll("." + c).length === 1) return "." + c;
+            } catch {}
+          }
+          // Sinon : monter vers le haut pour trouver un ancêtre unique
+          let cur = el;
+          let parts = [];
+          while (cur && cur !== document.body && cur !== document.documentElement) {
+            const tag = cur.tagName.toLowerCase();
+            // Ajouter le tag + nth-of-type si nécessaire
+            if (cur.id) {
+              parts.unshift("#" + cur.id);
+              break;
+            }
+            // Class unique ?
+            let found = false;
+            for (const c of cur.classList) {
+              try {
+                if (document.querySelectorAll("." + c).length === 1) {
+                  parts.unshift("." + c);
+                  found = true;
+                  break;
+                }
+              } catch {}
+            }
+            if (found) break;
+            // Ajouter le tag
+            const parent = cur.parentElement;
+            if (parent) {
+              const sibs = Array.from(parent.children).filter(x => x.tagName === cur.tagName);
+              const idx = sibs.indexOf(cur) + 1;
+              parts.unshift(sibs.length > 1 ? `${tag}:nth-of-type(${idx})` : tag);
+            } else {
+              parts.unshift(tag);
+            }
+            cur = parent;
+          }
+          // Joindre avec descendant
+          return parts.length > 0 ? parts.join(" ") : el.tagName.toLowerCase();
         }
+
+        const seenTexts = new Set();
+        let tn = walker.nextNode();
+        while (tn) {
+          const text = (tn.textContent || "").trim();
+          const parent = tn.parentElement;
+          if (!parent) { tn = walker.nextNode(); continue; }
+          if (seenTexts.has(text)) { tn = walker.nextNode(); continue; }
+          seenTexts.add(text);
+          try {
+            const st = window.getComputedStyle(parent);
+            if (st.display === "none" || st.visibility === "hidden") { tn = walker.nextNode(); continue; }
+          } catch {}
+          const short = text.slice(0, 30);
+          const tag = parent.tagName.toLowerCase();
+          try {
+            const sel = uniqueSelector(parent);
+            // Vérifier que le sélecteur résout bien
+            if (sel && document.querySelector(sel)) {
+              add(sel, `${tag} "${short}"`);
+            }
+          } catch {}
+          tn = walker.nextNode();
+        }
+      } catch (err) {
+        console.warn("[browse-cmd] TreeWalker pass error:", err);
+      }
+
+      // Passe 3 : texte CSS (::before/::after) — menus Ant Design, Material, etc.
+      try {
+        const cssEls = document.querySelectorAll("a, button, [role='button'], [role='menuitem'], [role='tab'], li, span, div, p, td, th, label");
+        for (let i = 0; i < cssEls.length; i++) {
+          const el = cssEls[i];
+          const tag = el.tagName.toLowerCase();
+          if (el.id && seen.has("#" + el.id)) continue;
+          let cssText = "";
+          try {
+            const before = window.getComputedStyle(el, "::before").content;
+            if (before && before !== "none" && before !== '""' && before !== "''") {
+              cssText += before.replace(/^["']|["']$/g, "").trim() + " ";
+            }
+            const after = window.getComputedStyle(el, "::after").content;
+            if (after && after !== "none" && after !== '""' && after !== "''") {
+              cssText += after.replace(/^["']|["']$/g, "").trim() + " ";
+            }
+          } catch {}
+          cssText = cssText.trim();
+          if (!cssText || cssText.length > 40) continue;
+          const alreadySeen = selectors.some(s => s.label.endsWith('"' + cssText.slice(0, 30) + '"'));
+          if (alreadySeen) continue;
+          const short = cssText.slice(0, 30);
+          if (el.id) add("#" + el.id, `${tag} "${short}"`);
+          else if (el.classList.length > 0) add("." + el.classList[0], `${tag} "${short}"`);
+          else {
+            const parent = el.parentNode;
+            if (!parent) continue;
+            const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+            const idx = siblings.indexOf(el) + 1;
+            add(`${tag}:nth-of-type(${idx})`, `${tag} "${short}"`);
+          }
+        }
+      } catch (err) {
+        console.warn("[browse-cmd] ::before pass error:", err);
       }
     } else if (type === "fill") {
       // Priorité : inputs, textareas, selects.
@@ -526,21 +659,32 @@
 
     if (SELECTOR_CMDS[cmdPart]) {
       // Autocomplétion des sélecteurs DOM.
-      const allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
-      const filtered = typePart.length > 0
-        ? allSelectors.filter((s) => s.value.toLowerCase().includes(typePart) || s.label.toLowerCase().includes(typePart))
-        : allSelectors.slice(0, 20);
-      suggestions = filtered;
-      suggestIndex = suggestions.length > 0 ? 0 : -1;
-      if (suggestions.length === 0) {
-        hideSuggest();
-        clearMarker();
-      } else {
-        renderSuggest();
-        // Marqueur rouge sur la suggestion active en temps réel.
-        const active = suggestions[suggestIndex >= 0 ? suggestIndex : 0];
-        liveMarkTarget(active.value);
-      }
+      // Afficher l'indicateur, laisser peindre, puis scanner.
+      if (loadingEl) loadingEl.style.display = "block";
+      const doScan = () => {
+        let allSelectors;
+        try {
+          allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
+        } catch (err) {
+          console.warn("[browse-cmd] collectSelectors error:", err);
+          allSelectors = [];
+        }
+        if (loadingEl) loadingEl.style.display = "none";
+        const filtered = typePart.length > 0
+          ? allSelectors.filter((s) => s.value.toLowerCase().includes(typePart) || s.label.toLowerCase().includes(typePart))
+          : allSelectors.slice(0, 20);
+        suggestions = filtered;
+        suggestIndex = suggestions.length > 0 ? 0 : -1;
+        if (suggestions.length === 0) {
+          hideSuggest();
+          clearMarker();
+        } else {
+          renderSuggest();
+          const active = suggestions[suggestIndex >= 0 ? suggestIndex : 0];
+          liveMarkTarget(active.value);
+        }
+      };
+      setTimeout(doScan, 0);
       return;
     }
 
@@ -924,6 +1068,15 @@
       background: #313244;
       color: #cdd6f4;
     }
+    .bc-loading {
+      display: none;
+      padding: 6px 16px;
+      font-size: 12px;
+      color: #a6e3a1;
+      background: #1e1e2e;
+      border-top: 1px solid #45475a;
+      flex-shrink: 0;
+    }
     /* Coloration syntaxique : nom de commande = vert, args = bleu. */
     .bc-cmd-color {
       color: #a6e3a1;
@@ -947,6 +1100,25 @@
       pointer-events: none;
       z-index: 2147483647;
       display: none;
+      transition: left 0.25s ease-out, top 0.25s ease-out;
+    }
+    .bc-marker-sweep {
+      position: fixed;
+      width: var(--sweep-size, 2000px);
+      height: var(--sweep-size, 2000px);
+      border-radius: 50%;
+      border: 12px solid rgba(243, 139, 168, 0.85);
+      box-shadow:
+        0 0 40px rgba(243, 139, 168, 0.5),
+        inset 0 0 40px rgba(243, 139, 168, 0.15);
+      transform: translate(-50%, -50%) scale(1);
+      pointer-events: none;
+      z-index: 2147483646;
+    }
+    @keyframes bc-sweep {
+      0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.9; }
+      80%  { opacity: 0.9; }
+      100% { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
     }
   `;
 
