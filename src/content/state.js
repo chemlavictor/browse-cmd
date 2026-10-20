@@ -33,6 +33,7 @@
   "use strict";
 
   const STORAGE_KEY = "browseCmdHistory";
+  const MACRO_KEY_PREFIX = "browseCmdMacro_";
   const MAX_HISTORY = 100;
 
   const state = {
@@ -40,7 +41,30 @@
     panelOpen: false,
     inputIndex: -1,
     ready: false,
+    recording: false,
+    macro: [],
+    macroName: "",
+    macros: {}, // { [host]: { [name]: string[] } }
   };
+
+  function macroStorageKey() {
+    return MACRO_KEY_PREFIX + window.location.host;
+  }
+
+  /** Charge les macros du site courant depuis chrome.storage.local. */
+  function loadMacros() {
+    if (!chrome.storage?.local) return;
+    chrome.storage.local.get(macroStorageKey(), (data) => {
+      const raw = data[macroStorageKey()];
+      state.macros = raw && typeof raw === "object" ? raw : {};
+    });
+  }
+
+  /** Sauvegarde les macros du site courant dans chrome.storage.local. */
+  function saveMacros() {
+    if (!chrome.storage?.local) return;
+    chrome.storage.local.set({ [macroStorageKey()]: state.macros });
+  }
 
   /**
    * Charge l'historique depuis chrome.storage.session.
@@ -130,13 +154,50 @@
     if (typeof window.__browseCmdOnOutput === "function") {
       window.__browseCmdOnOutput({ type: "cmd", text: trimmed });
     }
+    // start/end : toujours exécutés, jamais enregistrés.
+    const cmdName = trimmed.split(/\s+/)[0].toLowerCase();
+    if (cmdName === "start" || cmdName === "end") {
+      pushHistory(trimmed);
+      try {
+        const result = state.exec(trimmed);
+        if (typeof window.__browseCmdOnOutput === "function") {
+          window.__browseCmdOnOutput({ type: "out", text: result ?? "" });
+        }
+      } catch (err) {
+        if (typeof window.__browseCmdOnOutput === "function") {
+          window.__browseCmdOnOutput({ type: "err", text: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return;
+    }
+
+    // Si on enregistre, on ajoute à la macro (pas dans l'historique).
+    if (state.recording) {
+      state.macro.push(trimmed);
+      if (typeof window.__browseCmdOnOutput === "function") {
+        window.__browseCmdOnOutput({ type: "out", text: `● enregistré [${state.macro.length}]` });
+      }
+      return;
+    }
 
     pushHistory(trimmed);
 
     try {
       const result = state.exec(trimmed);
-      if (typeof window.__browseCmdOnOutput === "function") {
-        window.__browseCmdOnOutput({ type: "out", text: result ?? "" });
+      // replay renvoie une Promise (async avec delays).
+      const show = (text) => {
+        if (typeof window.__browseCmdOnOutput === "function") {
+          window.__browseCmdOnOutput({ type: "out", text: text ?? "" });
+        }
+      };
+      if (result && typeof result.then === "function") {
+        result.then(show).catch((err) => {
+          if (typeof window.__browseCmdOnOutput === "function") {
+            window.__browseCmdOnOutput({ type: "err", text: err instanceof Error ? err.message : String(err) });
+          }
+        });
+      } else {
+        show(result ?? "");
       }
     } catch (err) {
       if (typeof window.__browseCmdOnOutput === "function") {
@@ -146,6 +207,29 @@
         });
       }
     }
+  }
+
+  /**
+   * Sauvegarde la macro en cours sous un nom pour le site courant.
+   * @param {string} name - nom de la macro.
+   */
+  function saveMacro(name) {
+    const trimmed = name.trim();
+    if (!trimmed || state.macro.length === 0) return false;
+    state.macros[trimmed] = [...state.macro];
+    saveMacros();
+    return true;
+  }
+
+  /**
+   * Charge une macro sauvegardée.
+   * @param {string} name - nom de la macro.
+   * @returns {string[]|null}
+   */
+  function loadMacro(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    return state.macros[trimmed] || null;
   }
 
   /**
@@ -160,6 +244,9 @@
   state.pushHistory = pushHistory;
   state.loadHistory = loadHistory;
   state.persistHistory = persistHistory;
+  state.saveMacro = saveMacro;
+  state.loadMacro = loadMacro;
 
   loadHistory();
+  loadMacros();
 })();

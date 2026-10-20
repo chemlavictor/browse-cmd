@@ -54,6 +54,8 @@
   let cache = null;
   let cacheTimer = null;
   let scanning = false;
+  /** true après "unset" : empêche le re-marquage automatique. */
+  let markerDisabled = false;
 
   /**
    * Construit le DOM du shell dans une shadow root.
@@ -315,6 +317,7 @@
    * Efface le marqueur rouge.
    */
   function clearMarker() {
+    markerDisabled = true;
     if (markerEl) markerEl.style.display = "none";
     if (markerSweepEl) {
       markerSweepEl.style.display = "none";
@@ -328,6 +331,7 @@
    * @param {string} selector - sélecteur CSS
    */
   function liveMarkTarget(selector) {
+    if (markerDisabled) return;
     clearMarker();
     if (!selector) return;
     let target;
@@ -414,6 +418,7 @@
       e.preventDefault();
       if (suggestions.length > 0 && suggestIndex >= 0) {
         if (suggestIndex > 0) suggestIndex--;
+        markerDisabled = false;
         renderSuggest();
         liveMarkTarget(suggestions[suggestIndex].value);
       } else {
@@ -423,6 +428,7 @@
       e.preventDefault();
       if (suggestions.length > 0 && suggestIndex >= 0) {
         if (suggestIndex < suggestions.length - 1) suggestIndex++;
+        markerDisabled = false;
         renderSuggest();
         liveMarkTarget(suggestions[suggestIndex].value);
       } else {
@@ -434,7 +440,7 @@
   /**
    * Liste des commandes pour l'autocomplétion.
    */
-  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval", "unset"];
+  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval", "unset", "start", "end", "replay", "list"];
 
   /**
    * Commandes qui prennent un sélecteur en argument, et leur priorité.
@@ -981,6 +987,10 @@
         "  y <sel> / copy        Copie le texte d'un élément",
         "  e <js> / eval         Exécute du JS dans la page",
         "  unset                 Efface le marqueur rouge",
+        "  start <nom>           Démarre l'enregistrement d'une macro",
+        "  end                   Termine et sauvegarde la macro",
+        "  replay <nom>          Rejoue une macro (2s entre chaque cmd)",
+        "  list                  Liste les macros sauvegardées",
         "─────────────────────────────────────",
         "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
         "  Glisser la barre de titre pour déplacer",

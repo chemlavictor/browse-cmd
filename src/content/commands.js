@@ -35,6 +35,10 @@
     "  y <sel> / copy        Copie le texte d'un élément",
     "  e <js> / eval         Exécute du JS dans la page",
     "  unset                 Efface le marqueur rouge",
+    "  start <nom>           Démarre l'enregistrement d'une macro",
+    "  end                   Termine et sauvegarde la macro",
+    "  replay <nom>          Rejoue une macro (2s entre chaque cmd)",
+    "  list                  Liste les macros sauvegardées",
     "─────────────────────────────────────",
     "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
   ].join("\n");
@@ -172,6 +176,66 @@
         const result = eval(js);
         if (typeof window.__browseCmdInvalidate === "function") window.__browseCmdInvalidate();
         return formatEvalResult(result);
+      }
+
+      case "start": {
+        if (window.BrowseCmd.recording) return "déjà en cours d'enregistrement";
+        const name = args.join(" ").trim();
+        if (!name) return "Usage: start <nom>  — ex: start login";
+        window.BrowseCmd.recording = true;
+        window.BrowseCmd.macro = [];
+        window.BrowseCmd.macroName = name;
+        return `● enregistrement de "${name}" démarré`;
+      }
+
+      case "end": {
+        if (!window.BrowseCmd.recording) return "pas d'enregistrement en cours";
+        window.BrowseCmd.recording = false;
+        const n = window.BrowseCmd.macro.length;
+        const name = window.BrowseCmd.macroName;
+        if (n === 0) {
+          window.BrowseCmd.macroName = "";
+          return "■ enregistrement terminé : 0 commande (rien enregistré)";
+        }
+        // Sauvegarde dans chrome.storage.local (persistant).
+        const saved = window.BrowseCmd.saveMacro(name);
+        window.BrowseCmd.macroName = "";
+        return saved
+          ? `■ "${name}" sauvegardée : ${n} commande(s) — tapez "replay ${name}" pour rejouer`
+          : "■ erreur de sauvegarde";
+      }
+
+      case "replay": {
+        const name = args.join(" ").trim();
+        if (!name) return "Usage: replay <nom>  — tapez list pour voir les macros";
+        const cmds = window.BrowseCmd.loadMacro(name);
+        if (!cmds) return `macro "${name}" introuvable`;
+        return (async () => {
+          const lines = [`replay "${name}" : ${cmds.length} commande(s) (2s entre chaque)`];
+          for (let i = 0; i < cmds.length; i++) {
+            const cmd = cmds[i];
+            try {
+              const r = exec(cmd, ctx);
+              lines.push(`  ${i + 1}. ${cmd} → ${r || "(ok)"}`);
+            } catch (e) {
+              lines.push(`  ${i + 1}. ${cmd} → ERROR: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            if (typeof window.__browseCmdInvalidate === "function") window.__browseCmdInvalidate();
+            if (i < cmds.length - 1) {
+              lines.push(`  ⏳ 2s…`);
+              await new Promise((r) => setTimeout(r, 2000));
+            }
+          }
+          lines.push("replay terminé ✓");
+          return lines.join("\n");
+        })();
+      }
+
+      case "list": {
+        const macros = window.BrowseCmd.macros;
+        const names = Object.keys(macros);
+        if (names.length === 0) return "aucune macro sauvegardée pour ce site";
+        return "Macros sauvegardées :\n" + names.map((n) => `  • ${n} (${macros[n].length} cmd)`).join("\n");
       }
 
       default:
