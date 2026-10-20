@@ -102,13 +102,25 @@
     btnMin.textContent = "—";
     btnMin.addEventListener("click", closePanel);
 
+    const btnExport = document.createElement("button");
+    btnExport.className = "bc-btn bc-btn-export";
+    btnExport.title = "Exporter les macros";
+    btnExport.textContent = "⬇";
+    btnExport.addEventListener("click", exportMacros);
+
+    const btnImport = document.createElement("button");
+    btnImport.className = "bc-btn bc-btn-import";
+    btnImport.title = "Importer les macros";
+    btnImport.textContent = "⬆";
+    btnImport.addEventListener("click", importMacros);
+
     const btnClose = document.createElement("button");
     btnClose.className = "bc-btn bc-btn-close";
     btnClose.title = "Fermer";
     btnClose.textContent = "×";
     btnClose.addEventListener("click", closePanel);
 
-    btns.append(btnSidebar, btnMin, btnClose);
+    btns.append(btnExport, btnImport, btnSidebar, btnMin, btnClose);
     titleEl.appendChild(btns);
 
     // Poignée de resize (coin bas-droite).
@@ -260,6 +272,92 @@
       panelEl.classList.add("bc-float");
       applyFloatStyle();
     }
+  }
+
+  /**
+   * Exporte les macros du site courant dans un fichier JSON.
+   */
+  function exportMacros() {
+    if (typeof window.__browseCmdOnOutput === "function") {
+      window.__browseCmdOnOutput({ type: "out", text: "⏳ Export des macros…" });
+    }
+    window.BrowseCmd.loadMacros().then(() => {
+      const macros = window.BrowseCmd.macros;
+      const names = Object.keys(macros);
+      if (names.length === 0) {
+        if (typeof window.__browseCmdOnOutput === "function") {
+          window.__browseCmdOnOutput({ type: "out", text: "aucune macro à exporter" });
+        }
+        return;
+      }
+      const host = window.location.host;
+      const data = { host, macros };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `browse-cmd-macros-${host}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (typeof window.__browseCmdOnOutput === "function") {
+        window.__browseCmdOnOutput({ type: "out", text: `⬇ exporté : ${names.length} macro(s) → ${a.download}` });
+      }
+    });
+  }
+
+  /**
+   * Importe des macros depuis un fichier JSON.
+   */
+  function importMacros() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.style.display = "none";
+    input.addEventListener("change", () => {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!data || !data.macros || typeof data.macros !== "object") {
+            throw new Error("format invalide : champ 'macros' manquant");
+          }
+          // Fusionne avec les macros existantes du site courant.
+          window.BrowseCmd.loadMacros().then(() => {
+            const existing = window.BrowseCmd.macros;
+            let added = 0, updated = 0;
+            for (const [name, m] of Object.entries(data.macros)) {
+              // Support both formats: {cmds, date} or string[]
+              const entry = Array.isArray(m)
+                ? { cmds: m, date: new Date().toISOString().slice(0, 10) }
+                : m;
+              if (existing[name]) updated++;
+              else added++;
+              existing[name] = entry;
+            }
+            window.BrowseCmd.saveMacros();
+            if (typeof window.__browseCmdOnOutput === "function") {
+              window.__browseCmdOnOutput({
+                type: "out",
+                text: `⬆ importé : ${added} nouvelle(s), ${updated} mise(s) à jour`
+              });
+            }
+          });
+        } catch (e) {
+          if (typeof window.__browseCmdOnOutput === "function") {
+            window.__browseCmdOnOutput({
+              type: "err",
+              text: `import échoué : ${e instanceof Error ? e.message : String(e)}`
+            });
+          }
+        }
+      };
+      reader.readAsText(file);
+      input.remove();
+    });
+    document.body.appendChild(input);
+    input.click();
   }
 
   /** Élément marqueur rouge (créé une fois, réutilisé). */

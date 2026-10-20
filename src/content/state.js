@@ -315,6 +315,7 @@
   state.loadHistory = loadHistory;
   state.persistHistory = persistHistory;
   state.saveMacro = saveMacro;
+  state.saveMacros = saveMacros;
   state.loadMacro = loadMacro;
   state.allMacros = loadAllMacros;
   state.loadMacros = loadMacros;

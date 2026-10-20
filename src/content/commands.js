@@ -255,8 +255,20 @@
             return lines.join("\n");
           })();
         }
+        // replay rm <nom> → supprime une macro du site courant
+        if (name.startsWith("rm ")) {
+          const target = name.slice(3).trim();
+          if (!target) return "Usage: replay rm <nom>";
+          return (async () => {
+            await window.BrowseCmd.loadMacros();
+            if (!window.BrowseCmd.macros[target]) return `macro "${target}" introuvable`;
+            delete window.BrowseCmd.macros[target];
+            window.BrowseCmd.saveMacros();
+            return `🗑 "${target}" supprimée`;
+          })();
+        }
         // replay <nom> → rejoue
-        if (!name) return "Usage: replay <nom> | replay ls | replay ls -a";
+        if (!name) return "Usage: replay <nom> | replay ls | replay ls -a | replay rm <nom>";
         return (async () => {
           await window.BrowseCmd.loadMacros();
           const cmds = window.BrowseCmd.loadMacro(name);
