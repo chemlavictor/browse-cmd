@@ -48,6 +48,11 @@
   /** État du resize. */
   let resizing = false, resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
 
+  /** Cache des sélecteurs (pré-scanne à l'ouverture). */
+  let cache = null;
+  let cacheTimer = null;
+  let scanning = false;
+
   /**
    * Construit le DOM du shell dans une shadow root.
    * Idempotent : ne recrée pas si déjà présent.
@@ -121,7 +126,7 @@
     // Indicateur de chargement (affiché pendant le scan DOM).
     loadingEl = document.createElement("div");
     loadingEl.className = "bc-loading";
-    loadingEl.textContent = "⏳ Scan du DOM…";
+    loadingEl.textContent = "⏳ Chargement…";
     panelEl.appendChild(loadingEl);
 
     // Ligne de saisie.
@@ -626,6 +631,38 @@
   }
 
   /**
+   * Pré-scanne les 3 types de sélecteurs et les met en cache.
+   * S'exécute dans un setTimeout(0) pour ne pas bloquer le paint.
+   */
+  function startPreScan() {
+    if (scanning) return;
+    scanning = true;
+    if (loadingEl) loadingEl.style.display = "block";
+    setTimeout(() => {
+      const t0 = performance.now();
+      const newCache = {};
+      try { newCache.click = collectSelectors("click"); } catch (e) { newCache.click = []; }
+      try { newCache.fill = collectSelectors("fill"); } catch (e) { newCache.fill = []; }
+      try { newCache.all = collectSelectors("all"); } catch (e) { newCache.all = []; }
+      cache = newCache;
+      const ms = Math.round(performance.now() - t0);
+      console.log(`[browse-cmd] Pré-scan : ${cache.click.length + cache.fill.length + cache.all.length} sélecteurs en ${ms}ms`);
+      scanning = false;
+      if (loadingEl) loadingEl.style.display = "none";
+    }, 0);
+  }
+
+  /**
+   * Invalide le cache et relance le pré-scan.
+   * Appelé après chaque action qui modifie le DOM.
+   */
+  function invalidateCache() {
+    cache = null;
+    if (cacheTimer) { clearTimeout(cacheTimer); cacheTimer = null; }
+    cacheTimer = setTimeout(startPreScan, 300);
+  }
+
+  /**
    * Déclenché à chaque frappe : calcule les suggestions.
    * - Pas d'espace : autocomplete des noms de commandes.
    * - Avec espace et commande sélecteur (g, k, y) : autocomplete des sélecteurs DOM.
@@ -658,18 +695,40 @@
     const typePart = val.slice(spaceIdx + 1).toLowerCase();
 
     if (SELECTOR_CMDS[cmdPart]) {
-      // Autocomplétion des sélecteurs DOM.
-      // Afficher l'indicateur, laisser peindre, puis scanner.
+      const type = SELECTOR_CMDS[cmdPart];
+
+      // Cache disponible ? → instantané.
+      if (cache && cache[type]) {
+        const filtered = typePart.length > 0
+          ? cache[type].filter((s) => s.value.toLowerCase().includes(typePart) || s.label.toLowerCase().includes(typePart))
+          : cache[type].slice(0, 20);
+        suggestions = filtered;
+        suggestIndex = suggestions.length > 0 ? 0 : -1;
+        if (suggestions.length === 0) {
+          hideSuggest();
+          clearMarker();
+        } else {
+          renderSuggest();
+          const active = suggestions[suggestIndex >= 0 ? suggestIndex : 0];
+          liveMarkTarget(active.value);
+        }
+        return;
+      }
+
+      // Cache indisponible → scanner (avec indicateur).
       if (loadingEl) loadingEl.style.display = "block";
       const doScan = () => {
         let allSelectors;
         try {
-          allSelectors = collectSelectors(SELECTOR_CMDS[cmdPart]);
+          allSelectors = collectSelectors(type);
         } catch (err) {
           console.warn("[browse-cmd] collectSelectors error:", err);
           allSelectors = [];
         }
         if (loadingEl) loadingEl.style.display = "none";
+        // Mettre en cache pour la prochaine fois.
+        if (!cache) cache = {};
+        cache[type] = allSelectors;
         const filtered = typePart.length > 0
           ? allSelectors.filter((s) => s.value.toLowerCase().includes(typePart) || s.label.toLowerCase().includes(typePart))
           : allSelectors.slice(0, 20);
@@ -869,6 +928,8 @@
       inputEl.focus();
       inputEl.select();
     }
+    // Pré-scan du DOM au premier ouverture (lazy).
+    if (!cache && !scanning) startPreScan();
     // Affiche le message de bienvenue à la première ouverture.
     if (!welcomed && outputEl) {
       welcomed = true;
@@ -910,6 +971,7 @@
   window.__browseCmdOnClose = closePanel;
   window.__browseCmdOnOutput = appendOutput;
   window.__browseCmdClear = clearOutput;
+  window.__browseCmdInvalidate = invalidateCache;
 
   // Échap global : ferme le shell même si le focus n'est pas dans l'input.
   document.addEventListener("keydown", (e) => {

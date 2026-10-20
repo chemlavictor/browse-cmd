@@ -129,6 +129,7 @@
         const el = document.querySelector(selector);
         if (!el) return `not found: ${selector}`;
         el.click();
+        if (typeof window.__browseCmdInvalidate === "function") window.__browseCmdInvalidate();
         return `click : ${selector}`;
       }
 
@@ -144,6 +145,7 @@
         el.value = text;
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
+        if (typeof window.__browseCmdInvalidate === "function") window.__browseCmdInvalidate();
         return `fill : ${selector} = "${text}"`;
       }
       case "copy": {
@@ -161,6 +163,7 @@
         const js = args.join(" ");
         // eslint-disable-next-line no-eval
         const result = eval(js);
+        if (typeof window.__browseCmdInvalidate === "function") window.__browseCmdInvalidate();
         return formatEvalResult(result);
       }
 
