@@ -32,7 +32,7 @@
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "browseCmdHistory";
+  const HISTORY_KEY_PREFIX = "browseCmdHistory_";
   const MACRO_KEY_PREFIX = "browseCmdMacro_";
   const MAX_HISTORY = 100;
 
@@ -51,12 +51,30 @@
     return MACRO_KEY_PREFIX + window.location.host;
   }
 
-  /** Charge les macros du site courant depuis chrome.storage.local. */
+  /**
+   * Charge les macros du site depuis chrome.storage.local.
+   * Bloquant : attend la réponse avant de retourner.
+   * Structure : { [name]: { cmds: string[], date: string } }
+   */
   function loadMacros() {
-    if (!chrome.storage?.local) return;
-    chrome.storage.local.get(macroStorageKey(), (data) => {
-      const raw = data[macroStorageKey()];
-      state.macros = raw && typeof raw === "object" ? raw : {};
+    return new Promise((resolve) => {
+      if (!chrome.storage?.local) { resolve({}); return; }
+      chrome.storage.local.get(macroStorageKey(), (data) => {
+        const raw = data[macroStorageKey()];
+        // Migrate old format { name: string[] } → { name: { cmds, date } }
+        const macros = {};
+        if (raw && typeof raw === "object") {
+          for (const [k, v] of Object.entries(raw)) {
+            if (Array.isArray(v)) {
+              macros[k] = { cmds: v, date: new Date().toISOString().slice(0, 10) };
+            } else if (v && Array.isArray(v.cmds)) {
+              macros[k] = v;
+            }
+          }
+        }
+        state.macros = macros;
+        resolve(macros);
+      });
     });
   }
 
@@ -67,25 +85,61 @@
   }
 
   /**
-   * Charge l'historique depuis chrome.storage.session.
-   * Appelée une fois au démarrage du content script.
+   * Charge TOUTES les macros de tous les sites (pour ls -a).
+   * Structure : { [host]: { [name]: { cmds, date } } }
+   */
+  function loadAllMacros() {
+    return new Promise((resolve) => {
+      if (!chrome.storage?.local) { resolve({}); return; }
+      // Liste toutes les clés, filtre les clés de macros, puis les charge.
+      chrome.storage.local.getKeys((keys) => {
+        const macroKeys = keys.filter(k => k.startsWith(MACRO_KEY_PREFIX));
+        if (macroKeys.length === 0) { resolve({}); return; }
+        chrome.storage.local.get(macroKeys, (data) => {
+          const all = {};
+          for (const key of macroKeys) {
+            const val = data[key];
+            if (!val || typeof val !== "object") continue;
+            const host = key.slice(MACRO_KEY_PREFIX.length);
+            const macros = {};
+            for (const [k, v] of Object.entries(val)) {
+              if (Array.isArray(v)) {
+                macros[k] = { cmds: v, date: new Date().toISOString().slice(0, 10) };
+              } else if (v && Array.isArray(v.cmds)) {
+                macros[k] = v;
+              }
+            }
+            if (Object.keys(macros).length > 0) all[host] = macros;
+          }
+          resolve(all);
+        });
+      });
+    });
+  }
+
+  function historyStorageKey() {
+    return HISTORY_KEY_PREFIX + window.location.host;
+  }
+
+  /**
+   * Charge l'historique depuis chrome.storage.local (persistant par site).
    */
   function loadHistory() {
-    if (!chrome.storage?.session) return;
-    chrome.storage.session.get(STORAGE_KEY, (data) => {
-      if (data && Array.isArray(data[STORAGE_KEY])) {
-        state.history = data[STORAGE_KEY];
+    if (!chrome.storage?.local) return;
+    chrome.storage.local.get(historyStorageKey(), (data) => {
+      const key = historyStorageKey();
+      if (data && Array.isArray(data[key])) {
+        state.history = data[key];
       }
     });
   }
 
   /**
-   * Persiste l'historique dans chrome.storage.session.
-   * Asynchrone mais fire-and-forget : on attend pas la confirmation.
+   * Persiste l'historique dans chrome.storage.local.
    */
   function persistHistory() {
-    if (!chrome.storage?.session) return;
-    chrome.storage.session.set({ [STORAGE_KEY]: state.history });
+    if (!chrome.storage?.local) return;
+    chrome.storage.local.set({ [historyStorageKey()]: state.history });
   }
 
   /**
@@ -160,8 +214,20 @@
       pushHistory(trimmed);
       try {
         const result = state.exec(trimmed);
-        if (typeof window.__browseCmdOnOutput === "function") {
-          window.__browseCmdOnOutput({ type: "out", text: result ?? "" });
+        if (result && typeof result.then === "function") {
+          result.then((r) => {
+            if (typeof window.__browseCmdOnOutput === "function") {
+              window.__browseCmdOnOutput({ type: "out", text: r ?? "" });
+            }
+          }).catch((err) => {
+            if (typeof window.__browseCmdOnOutput === "function") {
+              window.__browseCmdOnOutput({ type: "err", text: err instanceof Error ? err.message : String(err) });
+            }
+          });
+        } else {
+          if (typeof window.__browseCmdOnOutput === "function") {
+            window.__browseCmdOnOutput({ type: "out", text: result ?? "" });
+          }
         }
       } catch (err) {
         if (typeof window.__browseCmdOnOutput === "function") {
@@ -216,20 +282,24 @@
   function saveMacro(name) {
     const trimmed = name.trim();
     if (!trimmed || state.macro.length === 0) return false;
-    state.macros[trimmed] = [...state.macro];
+    state.macros[trimmed] = { cmds: [...state.macro], date: new Date().toISOString().slice(0, 10) };
+    console.log("[browse-cmd] saveMacro:", trimmed, "key:", macroStorageKey(), "value:", JSON.stringify(state.macros[trimmed]));
     saveMacros();
     return true;
   }
 
   /**
-   * Charge une macro sauvegardée.
+   * Charge une macro sauvegardée (renvoie les cmds).
    * @param {string} name - nom de la macro.
    * @returns {string[]|null}
    */
   function loadMacro(name) {
     const trimmed = name.trim();
     if (!trimmed) return null;
-    return state.macros[trimmed] || null;
+    const m = state.macros[trimmed];
+    if (m && Array.isArray(m.cmds)) return m.cmds;
+    if (Array.isArray(m)) return m; // fallback old format
+    return null;
   }
 
   /**
@@ -246,7 +316,11 @@
   state.persistHistory = persistHistory;
   state.saveMacro = saveMacro;
   state.loadMacro = loadMacro;
+  state.allMacros = loadAllMacros;
+  state.loadMacros = loadMacros;
 
   loadHistory();
+  // Charge les macros en background (ne bloque pas le démarrage).
   loadMacros();
+
 })();

@@ -38,7 +38,8 @@
     "  start <nom>           Démarre l'enregistrement d'une macro",
     "  end                   Termine et sauvegarde la macro",
     "  replay <nom>          Rejoue une macro (2s entre chaque cmd)",
-    "  list                  Liste les macros sauvegardées",
+    "  unset                 Efface le marqueur rouge",
+    "  reload                Recharge la page en mémoire",
     "─────────────────────────────────────",
     "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
   ].join("\n");
@@ -103,6 +104,19 @@
         return "Au revoir !";
       case "url":
         return window.location.href;
+      case "reload": {
+        return (async () => {
+          if (typeof window.__browseCmdOnOutput === "function") {
+            window.__browseCmdOnOutput({ type: "out", text: "⏳ Re-scan du DOM…" });
+          }
+          // Re-scan immédiat du DOM (pas de debounce, pas de reload page).
+          if (typeof window.__browseCmdRescan === "function") {
+            window.__browseCmdRescan();
+          }
+          await new Promise((r) => setTimeout(r, 100));
+          return "cache re-scan ✓";
+        })();
+      }
       case "unset": {
         if (typeof window.__browseCmdClearMarker === "function") {
           window.__browseCmdClearMarker();
@@ -193,24 +207,60 @@
         window.BrowseCmd.recording = false;
         const n = window.BrowseCmd.macro.length;
         const name = window.BrowseCmd.macroName;
-        if (n === 0) {
-          window.BrowseCmd.macroName = "";
-          return "■ enregistrement terminé : 0 commande (rien enregistré)";
-        }
-        // Sauvegarde dans chrome.storage.local (persistant).
-        const saved = window.BrowseCmd.saveMacro(name);
         window.BrowseCmd.macroName = "";
-        return saved
-          ? `■ "${name}" sauvegardée : ${n} commande(s) — tapez "replay ${name}" pour rejouer`
-          : "■ erreur de sauvegarde";
+        if (n === 0) return "■ enregistrement terminé : 0 commande (rien enregistré)";
+        // Charge les macros du site, sauvegarde, persiste.
+        return (async () => {
+          await window.BrowseCmd.loadMacros();
+          const saved = window.BrowseCmd.saveMacro(name);
+          return saved
+            ? `■ "${name}" sauvegardée : ${n} commande(s) — tapez "replay ${name}" pour rejouer`
+            : "■ erreur de sauvegarde";
+        })();
       }
 
       case "replay": {
         const name = args.join(" ").trim();
-        if (!name) return "Usage: replay <nom>  — tapez list pour voir les macros";
-        const cmds = window.BrowseCmd.loadMacro(name);
-        if (!cmds) return `macro "${name}" introuvable`;
+        // replay ls → liste les macros du site courant
+        if (name === "ls" || name === "ls -a") {
+          const all = name === "ls -a";
+          return (async () => {
+            let lines;
+            if (all) {
+              const data = await window.BrowseCmd.allMacros();
+              const hosts = Object.keys(data);
+              if (hosts.length === 0) return "aucune macro sauvegardée";
+              lines = ["Macros sauvegardées (tous sites) :"];
+              for (const host of hosts) {
+                lines.push(`\n  ${host}/`);
+                for (const [n, m] of Object.entries(data[host])) {
+                  const cnt = Array.isArray(m) ? m.length : (m.cmds ? m.cmds.length : 0);
+                  const dt = (m && m.date) ? m.date : "";
+                  lines.push(`    ${n.padEnd(20)} ${cnt} cmd  ${dt}`);
+                }
+              }
+            } else {
+              await window.BrowseCmd.loadMacros();
+              const macros = window.BrowseCmd.macros;
+              const names = Object.keys(macros);
+              if (names.length === 0) return `aucune macro pour ${window.location.host}`;
+              lines = [`Macros de ${window.location.host}/ :`];
+              for (const n of names) {
+                const m = macros[n];
+                const cnt = Array.isArray(m) ? m.length : (m.cmds ? m.cmds.length : 0);
+                const dt = (m && m.date) ? m.date : "";
+                lines.push(`  ${n.padEnd(20)} ${cnt} cmd  ${dt}`);
+              }
+            }
+            return lines.join("\n");
+          })();
+        }
+        // replay <nom> → rejoue
+        if (!name) return "Usage: replay <nom> | replay ls | replay ls -a";
         return (async () => {
+          await window.BrowseCmd.loadMacros();
+          const cmds = window.BrowseCmd.loadMacro(name);
+          if (!cmds) return `macro "${name}" introuvable`;
           const lines = [`replay "${name}" : ${cmds.length} commande(s) (2s entre chaque)`];
           for (let i = 0; i < cmds.length; i++) {
             const cmd = cmds[i];
@@ -232,10 +282,20 @@
       }
 
       case "list": {
-        const macros = window.BrowseCmd.macros;
-        const names = Object.keys(macros);
-        if (names.length === 0) return "aucune macro sauvegardée pour ce site";
-        return "Macros sauvegardées :\n" + names.map((n) => `  • ${n} (${macros[n].length} cmd)`).join("\n");
+        return (async () => {
+          await window.BrowseCmd.loadMacros();
+          const macros = window.BrowseCmd.macros;
+          const names = Object.keys(macros);
+          if (names.length === 0) return `aucune macro pour ${window.location.host}`;
+          const lines = [`Macros de ${window.location.host}/ :`];
+          for (const n of names) {
+            const m = macros[n];
+            const cnt = Array.isArray(m) ? m.length : (m.cmds ? m.cmds.length : 0);
+            const dt = (m && m.date) ? m.date : "";
+            lines.push(`  ${n.padEnd(20)} ${cnt} cmd  ${dt}`);
+          }
+          return lines.join("\n");
+        })();
       }
 
       default:

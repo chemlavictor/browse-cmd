@@ -440,7 +440,7 @@
   /**
    * Liste des commandes pour l'autocomplétion.
    */
-  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval", "unset", "start", "end", "replay", "list"];
+  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval", "unset", "reload", "start", "end", "replay", "list"];
 
   /**
    * Commandes qui prennent un sélecteur en argument, et leur priorité.
@@ -677,6 +677,13 @@
     cache = null;
     if (cacheTimer) { clearTimeout(cacheTimer); cacheTimer = null; }
     cacheTimer = setTimeout(startPreScan, 300);
+  }
+
+  /** Re-scan immédiat du DOM (pas de debounce). Pour "reload". */
+  function rescanCache() {
+    cache = null;
+    if (cacheTimer) { clearTimeout(cacheTimer); cacheTimer = null; }
+    startPreScan();
   }
 
   /**
@@ -987,6 +994,7 @@
         "  y <sel> / copy        Copie le texte d'un élément",
         "  e <js> / eval         Exécute du JS dans la page",
         "  unset                 Efface le marqueur rouge",
+        "  reload                Recharge la page en mémoire",
         "  start <nom>           Démarre l'enregistrement d'une macro",
         "  end                   Termine et sauvegarde la macro",
         "  replay <nom>          Rejoue une macro (2s entre chaque cmd)",
@@ -1015,6 +1023,7 @@
   window.__browseCmdClear = clearOutput;
   window.__browseCmdInvalidate = invalidateCache;
   window.__browseCmdClearMarker = clearMarker;
+  window.__browseCmdRescan = rescanCache;
 
   // Échap global : ferme le shell même si le focus n'est pas dans l'input.
   document.addEventListener("keydown", (e) => {
