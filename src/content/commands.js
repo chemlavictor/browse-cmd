@@ -34,6 +34,7 @@
     "  f <sel> <texte> / fill  Remplit un input/textarea",
     "  y <sel> / copy        Copie le texte d'un élément",
     "  e <js> / eval         Exécute du JS dans la page",
+    "  unset                 Efface le marqueur rouge",
     "─────────────────────────────────────",
     "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
   ].join("\n");
@@ -98,6 +99,12 @@
         return "Au revoir !";
       case "url":
         return window.location.href;
+      case "unset": {
+        if (typeof window.__browseCmdClearMarker === "function") {
+          window.__browseCmdClearMarker();
+        }
+        return "marqueur effacé";
+      }
 
       case "tab": {
         const url = args.join(" ");

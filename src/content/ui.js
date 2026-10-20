@@ -31,6 +31,8 @@
   let inputEl = null;
   let suggestEl = null;
   let loadingEl = null;
+  let inputRowEl = null;
+  let promptEl = null;
   let inputIndex = -1;
   let draft = "";
   let suggestions = [];
@@ -130,22 +132,22 @@
     panelEl.appendChild(loadingEl);
 
     // Ligne de saisie.
-    const inputRow = document.createElement("div");
-    inputRow.className = "bc-input-row";
+    inputRowEl = document.createElement("div");
+    inputRowEl.className = "bc-input-row bc-term";
 
-    const prompt = document.createElement("span");
-    prompt.className = "bc-prompt";
-    prompt.textContent = "❯";
-    inputRow.appendChild(prompt);
+    promptEl = document.createElement("span");
+    promptEl.className = "bc-prompt";
+    promptEl.textContent = "❯";
+    inputRowEl.appendChild(promptEl);
 
     inputEl = document.createElement("input");
     inputEl.className = "bc-input";
     inputEl.type = "text";
     inputEl.autocomplete = "off";
     inputEl.spellcheck = false;
-    inputRow.appendChild(inputEl);
+    inputRowEl.appendChild(inputEl);
 
-    panelEl.appendChild(inputRow);
+    panelEl.appendChild(inputRowEl);
     shadow.appendChild(panelEl);
     document.body.appendChild(host);
 
@@ -314,6 +316,10 @@
    */
   function clearMarker() {
     if (markerEl) markerEl.style.display = "none";
+    if (markerSweepEl) {
+      markerSweepEl.style.display = "none";
+      markerSweepEl.style.animation = "none";
+    }
   }
 
   /**
@@ -385,6 +391,11 @@
   function onKeydown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
+      // Si le menu de suggestions est ouvert → complète (comme Tab).
+      if (suggestions.length > 0 && suggestEl && suggestEl.style.display !== "none") {
+        acceptSuggestion();
+        return;
+      }
       hideSuggest();
       const cmd = inputEl.value;
       inputEl.value = "";
@@ -423,7 +434,7 @@
   /**
    * Liste des commandes pour l'autocomplétion.
    */
-  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval"];
+  const COMMANDS = ["h", "help", "c", "clear", "q", "quit", "u", "url", "t", "tab", "g", "get", "k", "click", "f", "fill", "y", "copy", "e", "eval", "unset"];
 
   /**
    * Commandes qui prennent un sélecteur en argument, et leur priorité.
@@ -775,6 +786,7 @@
       }
     });
     suggestEl.style.display = "block";
+    setNavMode(true);
 
     // Quand on scroll la liste avec la molette, le marqueur rouge
     // suit l'élément le plus proche du centre du menu.
@@ -806,6 +818,25 @@
     suggestions = [];
     suggestIndex = -1;
     if (suggestEl) suggestEl.style.display = "none";
+    setNavMode(false);
+  }
+
+  /**
+   * Bascule le mode de la ligne de saisie.
+   * nav=true → mode navigation (suggestions ouvertes, prompt ⌕ vert)
+   * nav=false → mode terminal (prompt ❯ bleu)
+   */
+  function setNavMode(nav) {
+    if (!inputRowEl || !promptEl) return;
+    if (nav) {
+      inputRowEl.classList.remove("bc-term");
+      inputRowEl.classList.add("bc-nav");
+      promptEl.textContent = "⌕";
+    } else {
+      inputRowEl.classList.remove("bc-nav");
+      inputRowEl.classList.add("bc-term");
+      promptEl.textContent = "❯";
+    }
   }
 
   /**
@@ -949,6 +980,7 @@
         "  f <sel> <texte> / fill  Remplit un input/textarea",
         "  y <sel> / copy        Copie le texte d'un élément",
         "  e <js> / eval         Exécute du JS dans la page",
+        "  unset                 Efface le marqueur rouge",
         "─────────────────────────────────────",
         "  Tab : autocomplétion · ↑/↓ : historique · Esc : quitter",
         "  Glisser la barre de titre pour déplacer",
@@ -972,6 +1004,7 @@
   window.__browseCmdOnOutput = appendOutput;
   window.__browseCmdClear = clearOutput;
   window.__browseCmdInvalidate = invalidateCache;
+  window.__browseCmdClearMarker = clearMarker;
 
   // Échap global : ferme le shell même si le focus n'est pas dans l'input.
   document.addEventListener("keydown", (e) => {
@@ -1097,10 +1130,29 @@
       padding: 8px 16px;
       gap: 8px;
       flex-shrink: 0;
+      transition: background 0.15s ease;
+    }
+    /* Mode navigation (suggestions ouvertes). */
+    .bc-input-row.bc-nav {
+      background: rgba(166, 227, 161, 0.08);
+      border-top: 2px solid #a6e3a1;
+    }
+    .bc-input-row.bc-nav .bc-prompt {
+      color: #a6e3a1;
+    }
+    .bc-input-row.bc-nav .bc-input {
+      caret-color: #a6e3a1;
+    }
+    /* Mode terminal (suggestions fermées). */
+    .bc-input-row.bc-term .bc-prompt {
+      color: #89b4fa;
+    }
+    .bc-input-row.bc-term .bc-input {
+      caret-color: #89b4fa;
     }
     .bc-prompt {
-      color: #a6e3a1;
       flex-shrink: 0;
+      transition: color 0.15s ease;
     }
     .bc-input {
       flex: 1;
@@ -1110,7 +1162,7 @@
       color: #cdd6f4;
       font-family: inherit;
       font-size: inherit;
-      caret-color: #a6e3a1;
+      transition: caret-color 0.15s ease;
     }
     .bc-suggest {
       display: none;
@@ -1125,10 +1177,18 @@
       cursor: pointer;
       color: #a6adc8;
     }
-    .bc-suggest-item:hover,
+    .bc-suggest-item:hover {
+      background: #26273a;
+      color: #bac2de;
+    }
     .bc-suggest-active {
-      background: #313244;
-      color: #cdd6f4;
+      background: #a6e3a1;
+      color: #1e1e2e;
+      font-weight: bold;
+    }
+    .bc-suggest-active:hover {
+      background: #a6e3a1;
+      color: #1e1e2e;
     }
     .bc-loading {
       display: none;
